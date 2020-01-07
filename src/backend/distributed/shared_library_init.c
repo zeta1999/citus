@@ -818,6 +818,16 @@ RegisterCitusConfigVariables(void)
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
+		"citus.use_custom_path",
+		gettext_noop("Replaces citus' planner with a custom path in the standard planner"),
+		NULL,
+		&UseCustomPath,
+		false,
+		PGC_USERSET,
+		GUC_STANDARD,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
 		"citus.enable_object_propagation",
 		gettext_noop("Enables propagating object creation for more complex objects, "
 					 "schema's will always be created"),
