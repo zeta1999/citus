@@ -1758,7 +1758,7 @@ multi_join_restriction_hook(PlannerInfo *root,
 {
 	if (UseCustomPath)
 	{
-		// TODO implement the replacement of path nodes with distributed union
+		PathBasedPlannerJoinHook(root, joinrel, outerrel, innerrel, jointype, extra);
 		return;
 	}
 
