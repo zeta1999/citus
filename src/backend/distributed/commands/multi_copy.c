@@ -185,6 +185,9 @@ struct CopyShardState
 	/* used for doing local copy */
 	StringInfo localCopyBuffer;
 
+	/* containsLocalPlacement is true if we have a local placement for the shard id of this state */
+	bool containsLocalPlacement;
+
 	/* List of CopyPlacementStates for all active placements of the shard. */
 	List *placementStateList;
 };
@@ -2033,7 +2036,7 @@ ShouldExecuteCopyLocally()
 		return true;
 	}
 
-	return IsTransactionBlock();
+	return IsMultiStatementTransaction();
 }
 
 
@@ -2301,11 +2304,11 @@ CitusSendTupleToPlacements(TupleTableSlot *slot, CitusCopyDestReceiver *copyDest
 		}
 	}
 
-	if (copyDest->shouldUseLocalCopy && ContainsLocalPlacement(shardId))
+	if (copyDest->shouldUseLocalCopy && shardState->containsLocalPlacement)
 	{
-		bool shouldSendNow = false;
+		bool isEndOfCopy = false;
 		ProcessLocalCopy(slot, copyDest, shardId, shardState->localCopyBuffer,
-						 shouldSendNow);
+						 isEndOfCopy);
 	}
 
 
@@ -2520,6 +2523,9 @@ CitusCopyDestReceiverShutdown(DestReceiver *destReceiver)
 }
 
 
+/*
+ * FinishLocalCopy sends the remaining copies for local placements.
+ */
 static void
 FinishLocalCopy(CitusCopyDestReceiver *copyDest)
 {
@@ -2527,13 +2533,13 @@ FinishLocalCopy(CitusCopyDestReceiver *copyDest)
 	HASH_SEQ_STATUS status;
 	CopyShardState *copyShardState;
 
-	bool shouldSendNow = true;
+	bool isEndOfCopy = true;
 	foreach_htab(copyShardState, &status, shardStateHash)
 	{
 		if (copyShardState->localCopyBuffer->len > 0)
 		{
 			ProcessLocalCopy(NULL, copyDest, copyShardState->shardId,
-							 copyShardState->localCopyBuffer, shouldSendNow);
+							 copyShardState->localCopyBuffer, isEndOfCopy);
 		}
 	}
 }
@@ -3250,6 +3256,7 @@ InitializeCopyShardState(CopyShardState *shardState,
 	shardState->shardId = shardId;
 	shardState->placementStateList = NIL;
 	shardState->localCopyBuffer = makeStringInfo();
+	shardState->containsLocalPlacement = ContainsLocalPlacement(shardId);
 
 
 	foreach(placementCell, activePlacementList)

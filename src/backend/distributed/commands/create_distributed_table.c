@@ -1257,6 +1257,7 @@ CopyLocalDataIntoShards(Oid distributedRelationId)
 	ExprContext *econtext = GetPerTupleExprContext(estate);
 	econtext->ecxt_scantuple = slot;
 
+	/* here we already have the data locally */
 	bool canUseLocalCopy = false;
 	copyDest =
 		(DestReceiver *) CreateCitusCopyDestReceiver(distributedRelationId,

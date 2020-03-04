@@ -4,6 +4,6 @@
 
 extern void ProcessLocalCopy(TupleTableSlot *slot, CitusCopyDestReceiver *copyDest, int64
 							 shardId,
-							 StringInfo buffer, bool shouldSendNow);
+							 StringInfo buffer, bool isEndOfCopy);
 
 #endif /* LOCAL_MULTI_COPY */

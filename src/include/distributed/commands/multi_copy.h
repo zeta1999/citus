@@ -135,8 +135,6 @@ typedef struct CitusCopyDestReceiver
 	/* if true, should copy to local placements in the current session */
 	bool shouldUseLocalCopy;
 
-	bool insideTransaction;
-
 	/* copy into intermediate result */
 	char *intermediateResultIdPrefix;
 } CitusCopyDestReceiver;

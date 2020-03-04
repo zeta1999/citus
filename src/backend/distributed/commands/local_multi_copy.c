@@ -42,7 +42,7 @@
  * 512KB is a good balance between memory usage and performance. Note that this
  * is irrelevant in the common case where we open one connection per placement.
  */
-#define LOCAL_COPY_SWITCH_OVER_THRESHOLD (1 * 512 * 1024)
+#define LOCAL_COPY_BUFFER_SIZE (1 * 512 * 1024)
 
 
 static int ReadFromLocalBufferCallback(void *outbuf, int minread, int maxread);
@@ -52,7 +52,7 @@ static void AddSlotToBuffer(TupleTableSlot *slot, CitusCopyDestReceiver *copyDes
 
 static bool ShouldSendCopyNow(StringInfo buffer);
 static void DoLocalCopy(StringInfo buffer, Oid relationId, int64 shardId,
-						CopyStmt *copyStatement);
+						CopyStmt *copyStatement, bool isEndOfCopy);
 static bool ShouldAddBinaryHeaders(StringInfo buffer, bool isBinary);
 
 /*
@@ -68,7 +68,7 @@ StringInfo localCopyBuffer;
  */
 void
 ProcessLocalCopy(TupleTableSlot *slot, CitusCopyDestReceiver *copyDest, int64 shardId,
-				 StringInfo buffer, bool shouldSendNow)
+				 StringInfo buffer, bool isEndOfCopy)
 {
 	/*
 	 * Here we save the previous buffer, and put the local shard's buffer
@@ -84,7 +84,7 @@ ProcessLocalCopy(TupleTableSlot *slot, CitusCopyDestReceiver *copyDest, int64 sh
 	bool isBinaryCopy = copyDest->copyOutState->binary;
 	AddSlotToBuffer(slot, copyDest, isBinaryCopy);
 
-	if (shouldSendNow || ShouldSendCopyNow(buffer))
+	if (isEndOfCopy || ShouldSendCopyNow(buffer))
 	{
 		if (isBinaryCopy)
 		{
@@ -92,7 +92,7 @@ ProcessLocalCopy(TupleTableSlot *slot, CitusCopyDestReceiver *copyDest, int64 sh
 		}
 
 		DoLocalCopy(buffer, copyDest->distributedRelationId, shardId,
-					copyDest->copyStatement);
+					copyDest->copyStatement, isEndOfCopy);
 	}
 	copyDest->copyOutState->fe_msgbuf = previousBuffer;
 }
@@ -131,7 +131,7 @@ AddSlotToBuffer(TupleTableSlot *slot, CitusCopyDestReceiver *copyDest, bool isBi
 static bool
 ShouldSendCopyNow(StringInfo buffer)
 {
-	return buffer->len > LOCAL_COPY_SWITCH_OVER_THRESHOLD;
+	return buffer->len > LOCAL_COPY_BUFFER_SIZE;
 }
 
 
@@ -140,11 +140,12 @@ ShouldSendCopyNow(StringInfo buffer)
  * buffer into the shard.
  */
 static void
-DoLocalCopy(StringInfo buffer, Oid relationId, int64 shardId, CopyStmt *copyStatement)
+DoLocalCopy(StringInfo buffer, Oid relationId, int64 shardId, CopyStmt *copyStatement,
+			bool isEndOfCopy)
 {
 	localCopyBuffer = buffer;
 
-	Oid shardOid = GetShardOid(relationId, shardId);
+	Oid shardOid = GetShardLocalTableOid(relationId, shardId);
 	Relation shard = heap_open(shardOid, RowExclusiveLock);
 	Relation copiedShard = CreateCopiedShard(copyStatement->relation, shard);
 	ParseState *pState = make_parsestate(NULL);
@@ -158,10 +159,13 @@ DoLocalCopy(StringInfo buffer, Oid relationId, int64 shardId, CopyStmt *copyStat
 	CopyFrom(cstate);
 	EndCopyFrom(cstate);
 
+	heap_close(shard, NoLock);
 	free_parsestate(pState);
 	FreeStringInfo(buffer);
-	buffer = makeStringInfo();
-	heap_close(shard, NoLock);
+	if (!isEndOfCopy)
+	{
+		buffer = makeStringInfo();
+	}
 }
 
 
