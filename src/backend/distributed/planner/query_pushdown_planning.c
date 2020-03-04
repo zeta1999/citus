@@ -1344,6 +1344,11 @@ RelationInfoContainsOnlyRecurringTuples(PlannerInfo *plannerInfo,
 	{
 		RangeTblEntry *rangeTableEntry = plannerInfo->simple_rte_array[relationId];
 
+		if (QueryContainsDistributedTableRTE(rangeTableEntry->subquery))
+		{
+			return false;
+		}
+
 		/* relationInfo has this range table entry */
 		if (!IsRecurringRTE(rangeTableEntry, &recurType))
 		{
