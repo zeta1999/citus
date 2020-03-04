@@ -186,8 +186,6 @@ COMMIT;
 -- copy will also work if before any modifications
 BEGIN;
 \copy labs_mx from stdin delimiter ','
-NOTICE:  executing the copy locally for shard
-CONTEXT:  COPY labs_mx, line 1: "10,Weyland-Yutani-2"
 SELECT name FROM labs_mx WHERE id = 10;
        name
 ---------------------------------------------------------------------

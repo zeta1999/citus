@@ -3330,6 +3330,10 @@ InitializeCopyShardState(CopyShardState *shardState,
 static void
 LogLocalCopyExecution(uint64 shardId)
 {
+	if (!(LogRemoteCommands || LogLocalCommands))
+	{
+		return;
+	}
 	ereport(NOTICE, (errmsg("executing the copy locally for shard")));
 }
 

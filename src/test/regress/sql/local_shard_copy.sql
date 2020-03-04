@@ -27,6 +27,7 @@ INSERT INTO local_table SELECT * from generate_series(1, 10);
 \c - - - :worker_1_port
 
 SET search_path TO local_shard_copy;
+SET citus.log_local_commands TO ON;
 
 -- returns true of the distribution key filter
 -- on the distributed tables (e.g., WHERE key = 1), we'll hit a shard
@@ -257,7 +258,9 @@ SELECT key FROM distributed_table WHERE key = 1;
 ROLLBACK;
 
 \c - - - :master_port
+
 SET search_path TO local_shard_copy;
+SET citus.log_local_commands TO ON;
 
 TRUNCATE TABLE reference_table;
 TRUNCATE TABLE local_table;
@@ -289,7 +292,6 @@ COPY reference_table FROM STDIN;
 ROLLBACK;
 
 SET citus.enable_local_execution = 'on';
-
 
 SET client_min_messages TO ERROR;
 SET search_path TO public;
