@@ -4,6 +4,8 @@
 CREATE SCHEMA master_evaluation_combinations_modify;
 SET search_path TO master_evaluation_combinations_modify;
 
+SET citus.next_shard_id TO 1180000;
+
 -- create a volatile function that returns the local node id
 CREATE OR REPLACE FUNCTION get_local_node_id_stable()
 RETURNS INT AS $$
@@ -109,8 +111,7 @@ EXECUTE fast_path_router_with_two_params(('test', 7)::user_data, 7);
 
 INSERT INTO user_info_data VALUES(1, ('test', 1)::user_data);
 
-PREPARE fast_path_router_with_only_function AS DELETE FROM user_info_data WHERE get_local_node_id_stable() = 0 AND user_id = 1 RETURNING
- *;
+PREPARE fast_path_router_with_only_function AS DELETE FROM user_info_data WHERE get_local_node_id_stable() = 0 AND user_id = 1 RETURNING *;
 EXECUTE fast_path_router_with_only_function;
 INSERT INTO user_info_data VALUES(1, ('test', 1)::user_data);
 EXECUTE fast_path_router_with_only_function;
@@ -202,7 +203,6 @@ EXECUTE router_with_two_params(('test', 7)::user_data, 7);
 INSERT INTO user_info_data VALUES(1, ('test', 1)::user_data);
 
 PREPARE router_with_only_function AS DELETE FROM user_info_data WHERE get_local_node_id_stable() = 0 AND user_id = 1 AND user_id = 1 RETURNING *;
- *;
 EXECUTE router_with_only_function;
 INSERT INTO user_info_data VALUES(1, ('test', 1)::user_data);
 EXECUTE router_with_only_function;

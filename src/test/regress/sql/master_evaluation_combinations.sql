@@ -4,6 +4,8 @@
 CREATE SCHEMA master_evaluation_combinations;
 SET search_path TO master_evaluation_combinations;
 
+SET citus.next_shard_id TO 1170000;
+
 -- create a volatile function that returns the local node id
 CREATE OR REPLACE FUNCTION get_local_node_id_volatile()
 RETURNS INT AS $$
@@ -85,8 +87,6 @@ EXECUTE fast_path_router_with_param_on_non_dist_key(('name1', 21)::user_data);
 EXECUTE fast_path_router_with_param_on_non_dist_key(('name1', 21)::user_data);
 EXECUTE fast_path_router_with_param_on_non_dist_key(('name1', 21)::user_data);
 
-
-SELECT count(*) FROM user_info_data WHERE user_id = $2 AND u_data = ('name1', 21)::user_data;
 
 PREPARE fast_path_router_with_two_params(user_data, int) AS SELECT count(*) FROM user_info_data WHERE user_id = $2 AND u_data  = $1;
 
@@ -258,22 +258,6 @@ EXECUTE fast_path_router_with_param_on_non_dist_key(('name3', 23)::user_data);
 EXECUTE fast_path_router_with_param_on_non_dist_key(('name3', 23)::user_data);
 EXECUTE fast_path_router_with_param_on_non_dist_key(('name3', 23)::user_data);
 
-SELECT count(*) FROM user_info_data WHERE user_id = $2 AND u_data  = ('name3', 23)::user_data;
-
-PREPARE fast_path_router_with_two_params(user_data, int) AS SELECT count(*) FROM user_info_data WHERE user_id = $2 AND u_data  = $1;
-
-EXECUTE fast_path_router_with_two_params(('name3', 23)::user_data, 3);
-EXECUTE fast_path_router_with_two_params(('name3', 23)::user_data, 3);
-EXECUTE fast_path_router_with_two_params(('name3', 23)::user_data, 3);
-EXECUTE fast_path_router_with_two_params(('name3', 23)::user_data, 3);
-EXECUTE fast_path_router_with_two_params(('name3', 23)::user_data, 3);
-EXECUTE fast_path_router_with_two_params(('name3', 23)::user_data, 3);
-EXECUTE fast_path_router_with_two_params(('name3', 23)::user_data, 3);
-EXECUTE fast_path_router_with_two_params(('name3', 23)::user_data, 3);
-EXECUTE fast_path_router_with_two_params(('name3', 23)::user_data, 3);
-
-
-SELECT get_local_node_id_volatile() > 0 FROM user_info_data WHERE user_id = 3
 PREPARE fast_path_router_with_only_function AS SELECT get_local_node_id_volatile() > 0 FROM user_info_data WHERE user_id = 3;
 EXECUTE fast_path_router_with_only_function;
 EXECUTE fast_path_router_with_only_function;
@@ -345,7 +329,7 @@ EXECUTE router_with_param_on_non_dist_key_and_func(('name3', 23)::user_data);
 EXECUTE router_with_param_on_non_dist_key_and_func(('name3', 23)::user_data);
 EXECUTE router_with_param_on_non_dist_key_and_func(('name3', 23)::user_data);
 
-SELECT count(*) FROM user_info_data u1 JOIN user_info_data u2 USING (user_id) WHERE user_id = 'name3', 23)::user_data AND u1.u_data  = 3;
+SELECT count(*) FROM user_info_data u1 JOIN user_info_data u2 USING (user_id) WHERE user_id = 3 AND u1.u_data = ('name3', 23)::user_data;
 
 PREPARE router_with_two_params(user_data, int) AS SELECT count(*) FROM user_info_data u1 JOIN user_info_data u2 USING (user_id) WHERE user_id = $2 AND u1.u_data  = $1;
 
