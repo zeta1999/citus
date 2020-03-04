@@ -1343,7 +1343,8 @@ RelationInfoContainsOnlyRecurringTuples(PlannerInfo *plannerInfo,
 	{
 		RangeTblEntry *rangeTableEntry = plannerInfo->simple_rte_array[relationId];
 
-		if (FindNodeCheckInRangeTableList(list_make1(rangeTableEntry), IsDistributedTableRTE))
+		if (FindNodeCheckInRangeTableList(list_make1(rangeTableEntry),
+										  IsDistributedTableRTE))
 		{
 			return false;
 		}
