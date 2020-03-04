@@ -1336,7 +1336,6 @@ static bool
 RelationInfoContainsOnlyRecurringTuples(PlannerInfo *plannerInfo,
 										RelOptInfo *relationInfo)
 {
-	RecurringTuplesType recurType;
 	Relids relids = bms_copy(relationInfo->relids);
 	int relationId = -1;
 
@@ -1344,13 +1343,7 @@ RelationInfoContainsOnlyRecurringTuples(PlannerInfo *plannerInfo,
 	{
 		RangeTblEntry *rangeTableEntry = plannerInfo->simple_rte_array[relationId];
 
-		if (QueryContainsDistributedTableRTE(rangeTableEntry->subquery))
-		{
-			return false;
-		}
-
-		/* relationInfo has this range table entry */
-		if (!IsRecurringRTE(rangeTableEntry, &recurType))
+		if (FindNodeCheckInRangeTableList(list_make1(rangeTableEntry), IsDistributedTableRTE))
 		{
 			return false;
 		}
