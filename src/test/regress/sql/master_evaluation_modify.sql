@@ -4,6 +4,16 @@
 CREATE SCHEMA master_evaluation_combinations_modify;
 SET search_path TO master_evaluation_combinations_modify;
 
+-- in this test, we are considering combinations of
+-- several Citus features, and there is one prepared
+-- statement for the combinations of following:
+--     (a) Router Modify vs Fast Path Router Modify
+--     (b) Local Execution vs Remote Execution
+--     (c) Parameters on distribution key vs Parameters on non-dist key
+--         vs Non-parametrized queries
+--     (d) Master Function Evaluation Required vs
+--         Master Function Evaluation Not Required
+
 SET citus.next_shard_id TO 1180000;
 
 -- create a volatile function that returns the local node id
