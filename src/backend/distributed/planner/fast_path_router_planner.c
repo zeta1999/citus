@@ -407,9 +407,14 @@ DistKeyInSimpleOpExpression(Expr *clause, Var *distColumn, Node **distributionKe
 	/* at this point we should have the columnInExpr */
 	Assert(columnInExpr);
 	bool distColumnExists = equal(distColumn, columnInExpr);
-	if (distColumnExists && constantClause != NULL &&
-		distColumn->vartype == constantClause->consttype &&
-		*distributionKeyValue == NULL)
+
+	if (!distColumnExists)
+	{
+		return false;
+	}
+
+	if (constantClause != NULL &&
+		distColumn->vartype == constantClause->consttype)
 	{
 		/* if the vartypes do not match, let shard pruning handle it later */
 		*distributionKeyValue = (Node *) copyObject(constantClause);

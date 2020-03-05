@@ -808,7 +808,7 @@ PREPARE fast_path_router_with_param_on_non_dist_key_and_func(user_data) AS DELET
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, '(''test'', 2)'::user_data);
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, '(''test'',2)'::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key_and_func(('''test''', get_constant_stable())::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(''test'',2)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |   u_data
 ---------------------------------------------------------------------
        3 | ('test',2)
@@ -817,7 +817,7 @@ NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinatio
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, '(''test'', 2)');
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, '(''test'',2)'::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key_and_func(('''test''', get_constant_stable())::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(''test'',2)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |   u_data
 ---------------------------------------------------------------------
        3 | ('test',2)
@@ -826,7 +826,7 @@ NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinatio
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, '(''test'', 2)');
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, '(''test'',2)'::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key_and_func(('''test''', get_constant_stable())::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(''test'',2)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |   u_data
 ---------------------------------------------------------------------
        3 | ('test',2)
@@ -835,7 +835,7 @@ NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinatio
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, '(''test'', 2)');
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, '(''test'',2)'::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key_and_func(('''test''', get_constant_stable())::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(''test'',2)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |   u_data
 ---------------------------------------------------------------------
        3 | ('test',2)
@@ -844,7 +844,7 @@ NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinatio
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, '(''test'', 2)');
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, '(''test'',2)'::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key_and_func(('''test''', get_constant_stable())::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(''test'',2)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |   u_data
 ---------------------------------------------------------------------
        3 | ('test',2)
@@ -853,7 +853,7 @@ NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinatio
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, '(''test'', 2)');
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, '(''test'',2)'::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key_and_func(('''test''', get_constant_stable())::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(''test'',2)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |   u_data
 ---------------------------------------------------------------------
        3 | ('test',2)
@@ -862,7 +862,7 @@ NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinatio
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, '(''test'', 2)');
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, '(''test'',2)'::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key_and_func(('''test''', get_constant_stable())::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(''test'',2)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |   u_data
 ---------------------------------------------------------------------
        3 | ('test',2)
@@ -872,7 +872,7 @@ PREPARE fast_path_router_with_param_on_non_dist_key(user_data) AS DELETE FROM us
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, ('test', 1)::user_data);
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, ROW('test'::text, 1)::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key(('test', 1)::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(test,1)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |  u_data
 ---------------------------------------------------------------------
        3 | (test,1)
@@ -881,7 +881,7 @@ NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinatio
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, ('test', 1)::user_data);
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, ROW('test'::text, 1)::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key(('test', 1)::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(test,1)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |  u_data
 ---------------------------------------------------------------------
        3 | (test,1)
@@ -890,7 +890,7 @@ NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinatio
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, ('test', 1)::user_data);
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, ROW('test'::text, 1)::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key(('test', 1)::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(test,1)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |  u_data
 ---------------------------------------------------------------------
        3 | (test,1)
@@ -899,7 +899,7 @@ NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinatio
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, ('test', 1)::user_data);
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, ROW('test'::text, 1)::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key(('test', 1)::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(test,1)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |  u_data
 ---------------------------------------------------------------------
        3 | (test,1)
@@ -908,7 +908,7 @@ NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinatio
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, ('test', 1)::user_data);
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, ROW('test'::text, 1)::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key(('test', 1)::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(test,1)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |  u_data
 ---------------------------------------------------------------------
        3 | (test,1)
@@ -917,7 +917,7 @@ NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinatio
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, ('test', 1)::user_data);
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, ROW('test'::text, 1)::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key(('test', 1)::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(test,1)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |  u_data
 ---------------------------------------------------------------------
        3 | (test,1)
@@ -926,7 +926,7 @@ NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinatio
 INSERT INTO user_info_data (user_id, u_data) VALUES  (3, ('test', 1)::user_data);
 NOTICE:  executing the command locally: INSERT INTO master_evaluation_combinations_modify.user_info_data_1180001 (user_id, u_data) VALUES (3, ROW('test'::text, 1)::master_evaluation_combinations_modify.user_data)
 EXECUTE fast_path_router_with_param_on_non_dist_key(('test', 1)::user_data);
-NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) '(test,1)'::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
+NOTICE:  executing the command locally: DELETE FROM master_evaluation_combinations_modify.user_info_data_1180001 user_info_data WHERE ((u_data OPERATOR(pg_catalog.=) $1::master_evaluation_combinations_modify.user_data) AND (user_id OPERATOR(pg_catalog.=) 3)) RETURNING user_id, u_data
  user_id |  u_data
 ---------------------------------------------------------------------
        3 | (test,1)
