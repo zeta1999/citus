@@ -145,7 +145,7 @@ extern CitusCopyDestReceiver * CreateCitusCopyDestReceiver(Oid relationId,
 														   EState *executorState,
 														   bool stopOnFailure,
 														   char *intermediateResultPrefix,
-														   bool canUseLocalCopy);
+														   bool hasCopyDataLocally);
 extern FmgrInfo * ColumnOutputFunctions(TupleDesc rowDescriptor, bool binaryFormat);
 extern bool CanUseBinaryCopyFormat(TupleDesc tupleDescription);
 extern bool CanUseBinaryCopyFormatForTargetList(List *targetEntryList);

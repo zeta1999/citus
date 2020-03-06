@@ -431,12 +431,12 @@ CopyToExistingShards(CopyStmt *copyStatement, char *completionTag)
 		stopOnFailure = true;
 	}
 
-	bool canUseLocalCopy = true;
+	bool hasCopyDataLocally = false;
 
 	/* set up the destination for the COPY */
 	copyDest = CreateCitusCopyDestReceiver(tableId, columnNameList, partitionColumnIndex,
 										   executorState, stopOnFailure, NULL,
-										   canUseLocalCopy);
+										   hasCopyDataLocally);
 	dest = (DestReceiver *) copyDest;
 	dest->rStartup(dest, 0, tupleDescriptor);
 
@@ -1975,12 +1975,12 @@ CopyFlushOutput(CopyOutState cstate, char *start, char *pointer)
 CitusCopyDestReceiver *
 CreateCitusCopyDestReceiver(Oid tableId, List *columnNameList, int partitionColumnIndex,
 							EState *executorState, bool stopOnFailure,
-							char *intermediateResultIdPrefix, bool canUseLocalCopy)
+							char *intermediateResultIdPrefix, bool hasCopyDataLocally)
 {
 	CitusCopyDestReceiver *copyDest = (CitusCopyDestReceiver *) palloc0(
 		sizeof(CitusCopyDestReceiver));
 
-	copyDest->shouldUseLocalCopy = canUseLocalCopy && ShouldExecuteCopyLocally();
+	copyDest->shouldUseLocalCopy = !hasCopyDataLocally && ShouldExecuteCopyLocally();
 
 	/* set up the DestReceiver function pointers */
 	copyDest->pub.receiveSlot = CitusCopyDestReceiverReceive;

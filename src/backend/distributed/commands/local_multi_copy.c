@@ -36,11 +36,10 @@
 #include "distributed/shard_utils.h"
 
 /*
- * Data size threshold to switch over the active placement for a connection.
- * If this is too low, overhead of starting COPY commands will hurt the
- * performance. If this is too high, buffered data will use lots of memory.
- * 512KB is a good balance between memory usage and performance. Note that this
- * is irrelevant in the common case where we open one connection per placement.
+ * LOCAL_COPY_BUFFER_SIZE is buffer size for local copy.
+ * There will be one buffer for each local placement, therefore
+ * the maximum amount of memory that might be alocated is
+ * LOCAL_COPY_BUFFER_SIZE * #local_placement
  */
 #define LOCAL_COPY_BUFFER_SIZE (1 * 512 * 1024)
 
