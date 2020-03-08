@@ -2306,9 +2306,10 @@ CitusSendTupleToPlacements(TupleTableSlot *slot, CitusCopyDestReceiver *copyDest
 
 	if (copyDest->shouldUseLocalCopy && shardState->containsLocalPlacement)
 	{
-		bool isEndOfCopy = false;
-		ProcessLocalCopy(slot, copyDest, shardId, shardState->localCopyBuffer,
-						 isEndOfCopy);
+		InsertSlot(copyDest, slot, shardId);
+		// bool isEndOfCopy = false;
+		// ProcessLocalCopy(slot, copyDest, shardId, shardState->localCopyBuffer,
+						//  isEndOfCopy);
 	}
 
 
@@ -2495,7 +2496,7 @@ CitusCopyDestReceiverShutdown(DestReceiver *destReceiver)
 	Relation distributedRelation = copyDest->distributedRelation;
 
 	List *connectionStateList = ConnectionStateList(connectionStateHash);
-	FinishLocalCopy(copyDest);
+	// FinishLocalCopy(copyDest);
 
 	PG_TRY();
 	{

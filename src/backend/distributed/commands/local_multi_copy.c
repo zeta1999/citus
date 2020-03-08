@@ -61,6 +61,33 @@ static bool ShouldAddBinaryHeaders(StringInfo buffer, bool isBinary);
  */
 StringInfo localCopyBuffer;
 
+
+void InsertSlot(CitusCopyDestReceiver *copyDest, TupleTableSlot *slot, int64 shardId) {
+	TransactionAccessedLocalPlacement = true;
+	slot->tts_isempty = false;
+	Oid shardOid = GetShardLocalTableOid(copyDest->distributedRelationId, shardId);
+	Relation shard = heap_open(shardOid, RowExclusiveLock);
+	EState* estate = copyDest->executorState;
+	ResultRelInfo *resultRelInfo = makeNode(ResultRelInfo);
+	InitResultRelInfo(resultRelInfo,
+					  shard,
+					  1, /* dummy rangetable index */
+					  NULL,
+					  0);
+	CheckValidResultRel(resultRelInfo, CMD_INSERT);
+
+	ExecOpenIndices(resultRelInfo, false);
+
+	estate->es_result_relations = resultRelInfo;
+	estate->es_num_result_relations = 1;
+	estate->es_result_relation_info = resultRelInfo;
+	estate->es_range_table = CreateRangeTable(shard, ACL_INSERT);
+
+	ExecSimpleRelationInsert(estate, slot);
+	heap_close(shard, NoLock);
+}
+
+
 /*
  * ProcessLocalCopy adds the given slot and does a local copy if
  * this is the end of copy, or the buffer size exceeds the threshold.
