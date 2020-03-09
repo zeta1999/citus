@@ -62,11 +62,9 @@ static bool ShouldAddBinaryHeaders(StringInfo buffer, bool isBinary);
 StringInfo localCopyBuffer;
 
 
-void InsertSlot(CitusCopyDestReceiver *copyDest, TupleTableSlot *slot, int64 shardId) {
+void InsertSlot(CitusCopyDestReceiver *copyDest, TupleTableSlot *slot, Relation shard) {
 	TransactionAccessedLocalPlacement = true;
 	slot->tts_isempty = false;
-	Oid shardOid = GetShardLocalTableOid(copyDest->distributedRelationId, shardId);
-	Relation shard = heap_open(shardOid, RowExclusiveLock);
 	EState* estate = copyDest->executorState;
 	ResultRelInfo *resultRelInfo = makeNode(ResultRelInfo);
 	InitResultRelInfo(resultRelInfo,
@@ -76,7 +74,7 @@ void InsertSlot(CitusCopyDestReceiver *copyDest, TupleTableSlot *slot, int64 sha
 					  0);
 	CheckValidResultRel(resultRelInfo, CMD_INSERT);
 
-	ExecOpenIndices(resultRelInfo, false);
+	// ExecOpenIndices(resultRelInfo, false);
 
 	estate->es_result_relations = resultRelInfo;
 	estate->es_num_result_relations = 1;
@@ -84,7 +82,6 @@ void InsertSlot(CitusCopyDestReceiver *copyDest, TupleTableSlot *slot, int64 sha
 	estate->es_range_table = CreateRangeTable(shard, ACL_INSERT);
 
 	ExecSimpleRelationInsert(estate, slot);
-	heap_close(shard, NoLock);
 }
 
 

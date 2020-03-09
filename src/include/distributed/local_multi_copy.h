@@ -7,6 +7,6 @@ extern void ProcessLocalCopy(TupleTableSlot *slot, CitusCopyDestReceiver *copyDe
 							 StringInfo buffer, bool isEndOfCopy);
 
 
-extern void InsertSlot(CitusCopyDestReceiver *copyDest, TupleTableSlot *slot, int64 shardId);
+extern void InsertSlot(CitusCopyDestReceiver *copyDest, TupleTableSlot *slot, Relation shard);
 
 #endif /* LOCAL_MULTI_COPY */
