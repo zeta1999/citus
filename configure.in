@@ -175,6 +175,13 @@ CITUSAC_PROG_CC_CFLAGS_OPT([-Werror=implicit-int])
 CITUSAC_PROG_CC_CFLAGS_OPT([-Werror=implicit-function-declaration])
 CITUSAC_PROG_CC_CFLAGS_OPT([-Werror=return-type])
 
+# hardening flags
+CITUSAC_PROG_CC_CFLAGS_OPT([-Werror=format-security])
+CITUSAC_PROG_CC_CFLAGS_OPT([-fstack-protector-strong])
+CITUSAC_PROG_CC_CFLAGS_OPT([-D_FORTIFY_SOURCE=2])
+
+CITUS_LDFLAGS="-z relro -z now"
+
 #
 # --enable-coverage enables generation of code coverage metrics with gcov
 #
