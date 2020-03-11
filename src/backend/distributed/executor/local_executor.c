@@ -311,7 +311,7 @@ ExtractLocalAndRemoteTasks(bool readOnly, List *taskList, List **localTaskList,
 				*localTaskList = lappend(*localTaskList, task);
 			}
 		}
-		else
+		else if (list_length(localTaskPlacementList) > 0)
 		{
 			/*
 			 * At this point, we're dealing with reference tables or intermediate
@@ -337,6 +337,10 @@ ExtractLocalAndRemoteTasks(bool readOnly, List *taskList, List **localTaskList,
 
 				*remoteTaskList = lappend(*remoteTaskList, remoteTask);
 			}
+		}
+		else
+		{
+			*remoteTaskList = lappend(*remoteTaskList, task);
 		}
 	}
 }
