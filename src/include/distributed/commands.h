@@ -99,6 +99,14 @@ extern void ErrorIfUnsupportedForeignConstraintExists(Relation referencingRelati
 													  char referencingDistMethod,
 													  Var *referencingDistKey,
 													  uint32 referencingColocationId);
+extern void ErrorIfUnsupportedAlterAddDropFKeyBetweenReferecenceAndLocalTable(Oid
+																			  referencingTableOid,
+																			  Oid
+																			  referencedTableOid,
+																			  AlterTableType
+																			  alterTableType,
+																			  Constraint *
+																			  constraint);
 extern bool ColumnAppearsInForeignKeyToReferenceTable(char *columnName, Oid
 													  relationId);
 extern List * GetTableForeignConstraintCommands(Oid relationId);
