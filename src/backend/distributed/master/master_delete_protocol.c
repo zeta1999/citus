@@ -216,7 +216,6 @@ master_drop_all_shards(PG_FUNCTION_ARGS)
 	text *schemaNameText = PG_GETARG_TEXT_P(1);
 	text *relationNameText = PG_GETARG_TEXT_P(2);
 
-
 	char *schemaName = text_to_cstring(schemaNameText);
 	char *relationName = text_to_cstring(relationNameText);
 
