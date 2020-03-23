@@ -237,7 +237,7 @@ master_drop_all_shards(PG_FUNCTION_ARGS)
 	/*
 	 * master_drop_all_shards is typically called from the DROP TABLE trigger,
 	 * but could be called by a user directly. Make sure we have an
-	 * AccessExlusiveLock to prevent any other commands from running on this table
+	 * AccessExclusiveLock to prevent any other commands from running on this table
 	 * concurrently.
 	 */
 	LockRelationOid(relationId, AccessExclusiveLock);
