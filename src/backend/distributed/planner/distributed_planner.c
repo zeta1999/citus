@@ -122,7 +122,7 @@ static void PopPlannerRestrictionContext(void);
 static void ResetPlannerRestrictionContext(
 	PlannerRestrictionContext *plannerRestrictionContext);
 static bool HasUnresolvedExternParamsWalker(Node *expression, ParamListInfo boundParams);
-static bool IsLocalReferenceTableJoin(Query *parse, List *rangeTableList);
+static bool IsValidLocalReferenceTableJoin(Query *parse, List *rangeTableList);
 static bool QueryIsNotSimpleSelect(Node *node);
 static bool UpdateReferenceTablesWithShard(Node *node, void *context);
 static PlannedStmt * PlanFastPathDistributedStmt(DistributedPlanningContext *planContext,
@@ -158,7 +158,7 @@ distributed_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	}
 	else if (CitusHasBeenLoaded())
 	{
-		if (IsLocalReferenceTableJoin(parse, rangeTableList))
+		if (IsValidLocalReferenceTableJoin(parse, rangeTableList))
 		{
 			/*
 			 * For joins between reference tables and local tables, we replace
@@ -2341,11 +2341,11 @@ HasUnresolvedExternParamsWalker(Node *expression, ParamListInfo boundParams)
 
 
 /*
- * IsLocalReferenceTableJoin returns if the given query is a join between
- * reference tables and local tables.
+ * IsValidLocalReferenceTableJoin returns true if the given query
+ * is a valid join query between reference tables and local tables
  */
 static bool
-IsLocalReferenceTableJoin(Query *parse, List *rangeTableList)
+IsValidLocalReferenceTableJoin(Query *parse, List *rangeTableList)
 {
 	bool hasReferenceTable = false;
 	bool hasLocalTable = false;
