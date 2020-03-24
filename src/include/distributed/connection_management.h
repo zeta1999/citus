@@ -52,7 +52,22 @@ enum MultiConnectionMode
 	/* open a connection per (co-located set of) placement(s) */
 	CONNECTION_PER_PLACEMENT = 1 << 3,
 
-	OUTSIDE_TRANSACTION = 1 << 4
+	OUTSIDE_TRANSACTION = 1 << 4,
+
+	/*
+	 * Some connections are optionally required such as when adaptive executor is
+	 * executing a multi-shard command and requires the second (or further) connections
+	 * per node. In that case, the connection manager may decide not to allow the
+	 * connection.
+	 */
+	OPTIONAL_CONNECTION = 1 << 5,
+
+	/*
+	 * Via connection throttling, the connection establishments may be suspended
+	 * until a connection slot is empty to the remote host. When this flag is passed,
+	 * the connection manager skips waiting.
+	 */
+	WAIT_FOR_CONNECTION = 1 << 6
 };
 
 
@@ -114,6 +129,8 @@ typedef struct MultiConnection
 
 	/* number of bytes sent to PQputCopyData() since last flush */
 	uint64 copyBytesWrittenSinceLastFlush;
+
+	bool sharedCounterIncremented;
 } MultiConnection;
 
 
