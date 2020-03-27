@@ -419,12 +419,6 @@ ShouldLazyDeparseQuery(Task *task)
 void
 SetTaskQuery(Task *task, Query *query)
 {
-	if (ShouldLazyDeparseQuery(task))
-	{
-		task->queryStringLazy = NULL;
-		return;
-	}
-
 	task->queryStringLazy = DeparseTaskQuery(task, query);
 }
 
