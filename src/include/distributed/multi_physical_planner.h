@@ -226,6 +226,7 @@ typedef struct Task
 	 *
 	 * queryForLocalExecution should only be set by using SetTaskQuery()
 	 */
+
 	/*Query *queryForLocalExecution; */
 
 	/*
