@@ -226,7 +226,7 @@ typedef struct Task
 	 *
 	 * queryForLocalExecution should only be set by using SetTaskQuery()
 	 */
-	Query *queryForLocalExecution;
+	/*Query *queryForLocalExecution; */
 
 	/*
 	 * In almost all cases queryStringLazy should be read only indirectly by

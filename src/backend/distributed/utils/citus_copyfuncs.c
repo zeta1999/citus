@@ -258,7 +258,7 @@ CopyNodeTask(COPYFUNC_ARGS)
 	COPY_SCALAR_FIELD(taskType);
 	COPY_SCALAR_FIELD(jobId);
 	COPY_SCALAR_FIELD(taskId);
-	COPY_NODE_FIELD(queryForLocalExecution);
+	/*COPY_NODE_FIELD(queryForLocalExecution); */
 	COPY_STRING_FIELD(queryStringLazy);
 	COPY_NODE_FIELD(perPlacementQueryStrings);
 	COPY_NODE_FIELD(queryStringList);

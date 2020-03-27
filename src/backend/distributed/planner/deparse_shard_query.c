@@ -112,7 +112,6 @@ RebuildQueryStrings(Job *workerJob)
 		}
 
 		ereport(DEBUG4, (errmsg("query before rebuilding: %s",
-								task->queryForLocalExecution == NULL &&
 								task->queryStringLazy == NULL
 								? "(null)"
 								: ApplyLogRedaction(TaskQueryString(task)))));
@@ -422,12 +421,10 @@ SetTaskQuery(Task *task, Query *query)
 {
 	if (ShouldLazyDeparseQuery(task))
 	{
-		task->queryForLocalExecution = query;
 		task->queryStringLazy = NULL;
 		return;
 	}
 
-	task->queryForLocalExecution = NULL;
 	task->queryStringLazy = DeparseTaskQuery(task, query);
 }
 
@@ -440,7 +437,6 @@ SetTaskQuery(Task *task, Query *query)
 void
 SetTaskQueryString(Task *task, char *queryString)
 {
-	task->queryForLocalExecution = NULL;
 	task->queryStringLazy = queryString;
 }
 
@@ -499,20 +495,6 @@ TaskQueryString(Task *task)
 	{
 		return task->queryStringLazy;
 	}
-	Assert(task->queryForLocalExecution != NULL);
 
-
-	/*
-	 * Switch to the memory context of task->queryForLocalExecution before generating the query
-	 * string. This way the query string is not freed in between multiple
-	 * executions of a prepared statement. Except when UpdateTaskQueryString is
-	 * used to set task->queryForLocalExecution, in that case it is freed but it will be set to
-	 * NULL on the next execution of the query because UpdateTaskQueryString
-	 * does that.
-	 */
-	MemoryContext previousContext = MemoryContextSwitchTo(GetMemoryChunkContext(
-															  task->queryForLocalExecution));
-	task->queryStringLazy = DeparseTaskQuery(task, task->queryForLocalExecution);
-	MemoryContextSwitchTo(previousContext);
-	return task->queryStringLazy;
+	return NULL;
 }
