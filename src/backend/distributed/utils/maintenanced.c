@@ -339,6 +339,10 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 			InvalidateMetadataSystemCache();
 			StartTransactionCommand();
 
+			set_config_option("citus.max_cached_conns_per_worker", "0",
+							  (superuser() ? PGC_SUSET : PGC_USERSET), PGC_S_SESSION,
+							  GUC_ACTION_LOCAL, true, 0, false);
+
 			/*
 			 * Lock the extension such that it cannot be dropped or created
 			 * concurrently. Skip statistics collection if citus extension is
@@ -392,7 +396,9 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 
 			InvalidateMetadataSystemCache();
 			StartTransactionCommand();
-
+			set_config_option("citus.max_cached_conns_per_worker", "0",
+							  (superuser() ? PGC_SUSET : PGC_USERSET), PGC_S_SESSION,
+							  GUC_ACTION_LOCAL, true, 0, false);
 			/*
 			 * Some functions in ruleutils.c, which we use to get the DDL for
 			 * metadata propagation, require an active snapshot.
@@ -443,6 +449,10 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 			InvalidateMetadataSystemCache();
 			StartTransactionCommand();
 
+			set_config_option("citus.max_cached_conns_per_worker", "0",
+							  (superuser() ? PGC_SUSET : PGC_USERSET), PGC_S_SESSION,
+							  GUC_ACTION_LOCAL, true, 0, false);
+
 			if (!LockCitusExtension())
 			{
 				ereport(DEBUG1, (errmsg("could not lock the citus extension, "
@@ -480,6 +490,10 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 
 			InvalidateMetadataSystemCache();
 			StartTransactionCommand();
+
+			set_config_option("citus.max_cached_conns_per_worker", "0",
+							  (superuser() ? PGC_SUSET : PGC_USERSET), PGC_S_SESSION,
+							  GUC_ACTION_LOCAL, true, 0, false);
 
 			/*
 			 * We skip the deadlock detection if citus extension
