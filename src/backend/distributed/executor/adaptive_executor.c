@@ -2356,8 +2356,10 @@ ManageWorkerPool(WorkerPool *workerPool)
 			connectionFlags |= OPTIONAL_CONNECTION;
 		}
 		else if (UseConnectionPerPlacement() ||
-				 SideChannelConnectionExists(workerPool->nodeName, workerPool->nodePort,
-											 NULL, NULL))
+				 (list_length(workerPool->sessionList) == 0 &&
+				  SideChannelConnectionExists(workerPool->nodeName, workerPool->nodePort,
+											  NULL,
+											  NULL)))
 		{
 			/*
 			 * Via connection throttling, the connection establishments may be suspended
