@@ -289,8 +289,6 @@ typedef struct DistributedExecution
 	 * do cleanup for repartition queries.
 	 */
 	List *jobIdList;
-
-	bool hasSubPlans;
 } DistributedExecution;
 
 
@@ -557,8 +555,7 @@ static DistributedExecution * CreateDistributedExecution(RowModifyLevel modLevel
 														 int targetPoolSize,
 														 TransactionProperties *
 														 xactProperties,
-														 List *jobIdList,
-														 bool hasSubPlans);
+														 List *jobIdList);
 static TransactionProperties DecideTransactionPropertiesForTaskList(RowModifyLevel
 																	modLevel,
 																	List *taskList,
@@ -671,7 +668,6 @@ AdaptiveExecutor(CitusScanState *scanState)
 	bool interTransactions = false;
 	int targetPoolSize = MaxAdaptiveExecutorPoolSize;
 	List *jobIdList = NIL;
-	bool hasSubPlans = list_length(distributedPlan->subPlanList) > 0;
 
 	Job *job = distributedPlan->workerJob;
 	List *taskList = job->taskList;
@@ -708,8 +704,7 @@ AdaptiveExecutor(CitusScanState *scanState)
 		scanState->tuplestorestate,
 		targetPoolSize,
 		&xactProperties,
-		jobIdList,
-		hasSubPlans);
+		jobIdList);
 
 	/*
 	 * Make sure that we acquire the appropriate locks even if the local tasks
@@ -945,7 +940,6 @@ ExecuteTaskListExtended(RowModifyLevel modLevel, List *taskList,
 						TransactionProperties *xactProperties, List *jobIdList)
 {
 	ParamListInfo paramListInfo = NULL;
-	bool hasSubPlans = false;
 
 	/*
 	 * If current transaction accessed local placements and task list includes
@@ -966,7 +960,7 @@ ExecuteTaskListExtended(RowModifyLevel modLevel, List *taskList,
 	DistributedExecution *execution =
 		CreateDistributedExecution(modLevel, taskList, hasReturning, paramListInfo,
 								   tupleDescriptor, tupleStore, targetPoolSize,
-								   xactProperties, jobIdList, hasSubPlans);
+								   xactProperties, jobIdList);
 
 	StartDistributedExecution(execution);
 	RunDistributedExecution(execution);
@@ -985,8 +979,7 @@ CreateDistributedExecution(RowModifyLevel modLevel, List *taskList,
 						   bool hasReturning,
 						   ParamListInfo paramListInfo, TupleDesc tupleDescriptor,
 						   Tuplestorestate *tupleStore, int targetPoolSize,
-						   TransactionProperties *xactProperties, List *jobIdList,
-						   bool hasSubPlans)
+						   TransactionProperties *xactProperties, List *jobIdList)
 {
 	DistributedExecution *execution =
 		(DistributedExecution *) palloc0(sizeof(DistributedExecution));
@@ -1019,7 +1012,6 @@ CreateDistributedExecution(RowModifyLevel modLevel, List *taskList,
 	execution->waitFlagsChanged = false;
 
 	execution->jobIdList = jobIdList;
-	execution->hasSubPlans = hasSubPlans;
 
 	/* allocate execution specific data once, on the ExecutorState memory context */
 	if (tupleDescriptor != NULL)
@@ -2363,7 +2355,7 @@ ManageWorkerPool(WorkerPool *workerPool)
 			 */
 			connectionFlags |= OPTIONAL_CONNECTION;
 		}
-		else if (UseConnectionPerPlacement() || execution->hasSubPlans)
+		else if (UseConnectionPerPlacement())
 		{
 			/*
 			 * Via connection throttling, the connection establishments may be suspended
