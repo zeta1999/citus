@@ -1275,6 +1275,69 @@ ShouldShutdownConnection(MultiConnection *connection, const int cachedConnection
 
 
 /*
+ * This is very slow, mostly for testing.
+ *
+ *
+ */
+bool
+SideChannelConnectionExists(const char *hostname, int32 port,
+							const char *user, const char *database)
+{
+	ConnectionHashKey key;
+	bool found;
+
+	/* do some minimal input checks */
+	strlcpy(key.hostname, hostname, MAX_NODE_LENGTH);
+	if (strlen(hostname) > MAX_NODE_LENGTH)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("hostname exceeds the maximum length of %d",
+							   MAX_NODE_LENGTH)));
+	}
+
+	key.port = port;
+	if (user)
+	{
+		strlcpy(key.user, user, NAMEDATALEN);
+	}
+	else
+	{
+		strlcpy(key.user, CurrentUserName(), NAMEDATALEN);
+	}
+	if (database)
+	{
+		strlcpy(key.database, database, NAMEDATALEN);
+	}
+	else
+	{
+		strlcpy(key.database, CurrentDatabaseName(), NAMEDATALEN);
+	}
+
+	ConnectionHashEntry *entry = hash_search(ConnectionHash, &key, HASH_FIND, &found);
+	if (!found)
+	{
+		return false;
+	}
+
+
+	dlist_iter iter;
+
+	dlist_foreach(iter, entry->connections)
+	{
+		MultiConnection *connection =
+			dlist_container(MultiConnection, connectionNode, iter.cur);
+
+		if (connection->purpose == CONNECTION_PURPOSE_SIDECHANNEL)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+
+/*
  * ResetConnection preserves the given connection for later usage by
  * resetting its states.
  */

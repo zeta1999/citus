@@ -247,6 +247,8 @@ extern void FinishConnectionListEstablishment(List *multiConnectionList);
 extern void FinishConnectionEstablishment(MultiConnection *connection);
 extern void ClaimConnectionExclusively(MultiConnection *connection);
 extern void UnclaimConnection(MultiConnection *connection);
+extern bool SideChannelConnectionExists(const char *hostname, int32 port,
+										const char *user, const char *database);
 
 /* dealing with notice handler */
 extern void SetCitusNoticeProcessor(MultiConnection *connection);
