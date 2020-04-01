@@ -358,7 +358,14 @@ StartNodeUserDatabaseConnection(uint32 flags, const char *hostname, int32 port,
 	 * Either no caching desired, or no pre-established, non-claimed,
 	 * connection present. Initiate connection establishment.
 	 */
-	connection = StartConnectionEstablishment(&key);
+	PG_TRY();
+	{
+		connection = StartConnectionEstablishment(&key);
+	}
+	PG_CATCH();
+	{
+		DecrementSharedConnectionCounter(hostname, port);
+	}
 
 	dlist_push_tail(entry->connections, &connection->connectionNode);
 
