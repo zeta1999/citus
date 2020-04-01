@@ -1913,7 +1913,6 @@ FindOrCreateWorkerPool(DistributedExecution *execution, char *nodeName, int node
 	workerPool = (WorkerPool *) palloc0(sizeof(WorkerPool));
 	workerPool->nodeName = pstrdup(nodeName);
 	workerPool->nodePort = nodePort;
-	INSTR_TIME_SET_ZERO(workerPool->poolStartTime);
 	workerPool->distributedExecution = execution;
 
 	/* "open" connections aggressively when there are cached connections */
@@ -2381,6 +2380,18 @@ ManageWorkerPool(WorkerPool *workerPool)
 		 * different connection.
 		 */
 		connection->claimedExclusively = true;
+
+		if (list_length(workerPool->sessionList) == 0)
+		{
+			/*
+			 * The worker pool has just started to establish connections. We need to
+			 * defer this initilization after StartNodeUserDatabaseConnection()
+			 * because for non-optional connections, we have some logic to wait
+			 * until a connection is allowed to be established for a duration of
+			 * citus.connection_retry_timeout.
+			 */
+			INSTR_TIME_SET_ZERO(workerPool->poolStartTime);
+		}
 
 		/* create a session for the connection */
 		WorkerSession *session = FindOrCreateWorkerSession(workerPool, connection);
