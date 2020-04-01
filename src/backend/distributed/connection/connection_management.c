@@ -366,6 +366,7 @@ StartNodeUserDatabaseConnection(uint32 flags, const char *hostname, int32 port,
 	{
 		DecrementSharedConnectionCounter(hostname, port);
 	}
+	PG_END_TRY();
 
 	dlist_push_tail(entry->connections, &connection->connectionNode);
 
