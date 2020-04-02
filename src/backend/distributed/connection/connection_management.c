@@ -322,7 +322,6 @@ StartNodeUserDatabaseConnection(uint32 flags, const char *hostname, int32 port,
 		}
 	}
 
-
 	if (flags & NEVER_WAIT_FOR_CONNECTION)
 	{
 		/*

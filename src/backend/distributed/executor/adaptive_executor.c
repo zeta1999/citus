@@ -680,7 +680,7 @@ AdaptiveExecutor(CitusScanState *scanState)
 	bool interTransactions = false;
 	int targetPoolSize = MaxAdaptiveExecutorPoolSize;
 	List *jobIdList = NIL;
-	bool precededByRemoteExecution = scanState->establishedRemoteConnection;
+	bool precededByRemoteExecution = false;
 
 	Job *job = distributedPlan->workerJob;
 	List *taskList = job->taskList;
@@ -1028,7 +1028,7 @@ CreateDistributedExecution(RowModifyLevel modLevel, List *taskList,
 	execution->waitFlagsChanged = false;
 
 	execution->jobIdList = jobIdList;
-	execution->precededByRemoteExecution = precededByRemoteExecution;
+	execution->precededByRemoteExecution = false;
 
 	/* allocate execution specific data once, on the ExecutorState memory context */
 	if (tupleDescriptor != NULL)
@@ -2372,11 +2372,12 @@ ManageWorkerPool(WorkerPool *workerPool)
 			 */
 			connectionFlags |= OPTIONAL_CONNECTION;
 		}
-		else if (!CanWaitForConnection(workerPool))
+		//else if (!CanWaitForConnection(workerPool))
 		{
 
-			connectionFlags |= NEVER_WAIT_FOR_CONNECTION;
+		//	connectionFlags |= NEVER_WAIT_FOR_CONNECTION;
 		}
+
 
 		/* open a new connection to the worker */
 		MultiConnection *connection = StartNodeUserDatabaseConnection(connectionFlags,
@@ -2490,8 +2491,7 @@ CanWaitForConnection(WorkerPool *workerPool)
 		 */
 		return false;
 	}
-	else if (list_length(workerPool->sessionList) == 0 &&
-			 workerPool->distributedExecution->precededByRemoteExecution)
+	else if (workerPool->distributedExecution->precededByRemoteExecution)
 	{
 		/*
 		 * If any subPlans have been executed, we cannot wait to get the first
@@ -2501,6 +2501,7 @@ CanWaitForConnection(WorkerPool *workerPool)
 		 * if we let them wait, none would proceed and we'd end-up with an un-detected
 		 * deadlock on the waitersConditionVariable.
 		 */
+		//elog(INFO, "precededByRemoteExecution");
 		return false;
 	}
 
