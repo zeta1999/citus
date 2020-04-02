@@ -289,6 +289,14 @@ typedef struct DistributedExecution
 	 * do cleanup for repartition queries.
 	 */
 	List *jobIdList;
+
+
+	/*
+	 * Set to true if this remote execution is coming after another
+	 * distributed execution for the same command (such as after subPlan
+	 * execution).
+	 */
+	bool precededByRemoteExecution;
 } DistributedExecution;
 
 
@@ -555,7 +563,8 @@ static DistributedExecution * CreateDistributedExecution(RowModifyLevel modLevel
 														 int targetPoolSize,
 														 TransactionProperties *
 														 xactProperties,
-														 List *jobIdList);
+														 List *jobIdList,
+														 bool precededByRemoteExecution);
 static TransactionProperties DecideTransactionPropertiesForTaskList(RowModifyLevel
 																	modLevel,
 																	List *taskList,
@@ -590,6 +599,7 @@ static WorkerSession * FindOrCreateWorkerSession(WorkerPool *workerPool,
 												 MultiConnection *connection);
 static void ManageWorkerPool(WorkerPool *workerPool);
 static bool CanUseOptionalConnection(WorkerPool *workerPool);
+static bool CanWaitForConnection(WorkerPool *workerPool);
 static void CheckConnectionTimeout(WorkerPool *workerPool);
 static int UsableConnectionCount(WorkerPool *workerPool);
 static long NextEventTimeout(DistributedExecution *execution);
@@ -646,7 +656,9 @@ AdaptiveExecutorPreExecutorRun(CitusScanState *scanState)
 	 */
 	LockPartitionsForDistributedPlan(distributedPlan);
 
-	ExecuteSubPlans(distributedPlan);
+	bool establishedRemoteConnection = ExecuteSubPlans(distributedPlan);
+
+	scanState->establishedRemoteConnection = establishedRemoteConnection;
 }
 
 
@@ -668,6 +680,7 @@ AdaptiveExecutor(CitusScanState *scanState)
 	bool interTransactions = false;
 	int targetPoolSize = MaxAdaptiveExecutorPoolSize;
 	List *jobIdList = NIL;
+	bool precededByRemoteExecution = scanState->establishedRemoteConnection;
 
 	Job *job = distributedPlan->workerJob;
 	List *taskList = job->taskList;
@@ -704,7 +717,8 @@ AdaptiveExecutor(CitusScanState *scanState)
 		scanState->tuplestorestate,
 		targetPoolSize,
 		&xactProperties,
-		jobIdList);
+		jobIdList,
+		precededByRemoteExecution);
 
 	/*
 	 * Make sure that we acquire the appropriate locks even if the local tasks
@@ -885,7 +899,7 @@ ExecuteTaskListOutsideTransaction(RowModifyLevel modLevel, List *taskList,
 
 	return ExecuteTaskListExtended(modLevel, taskList, tupleDescriptor,
 								   tupleStore, hasReturning, targetPoolSize,
-								   &xactProperties, jobIdList);
+								   &xactProperties, jobIdList, true);
 }
 
 
@@ -905,7 +919,7 @@ ExecuteTaskList(RowModifyLevel modLevel, List *taskList, int targetPoolSize)
 
 	return ExecuteTaskListExtended(modLevel, taskList, tupleDescriptor,
 								   tupleStore, hasReturning, targetPoolSize,
-								   &xactProperties, NIL);
+								   &xactProperties, NIL, false);
 }
 
 
@@ -925,7 +939,7 @@ ExecuteTaskListIntoTupleStore(RowModifyLevel modLevel, List *taskList,
 
 	return ExecuteTaskListExtended(modLevel, taskList, tupleDescriptor,
 								   tupleStore, hasReturning, targetPoolSize,
-								   &xactProperties, NIL);
+								   &xactProperties, NIL, false);
 }
 
 
@@ -937,7 +951,8 @@ uint64
 ExecuteTaskListExtended(RowModifyLevel modLevel, List *taskList,
 						TupleDesc tupleDescriptor, Tuplestorestate *tupleStore,
 						bool hasReturning, int targetPoolSize,
-						TransactionProperties *xactProperties, List *jobIdList)
+						TransactionProperties *xactProperties, List *jobIdList,
+						bool precededByRemoteExecution)
 {
 	ParamListInfo paramListInfo = NULL;
 
@@ -960,7 +975,7 @@ ExecuteTaskListExtended(RowModifyLevel modLevel, List *taskList,
 	DistributedExecution *execution =
 		CreateDistributedExecution(modLevel, taskList, hasReturning, paramListInfo,
 								   tupleDescriptor, tupleStore, targetPoolSize,
-								   xactProperties, jobIdList);
+								   xactProperties, jobIdList, precededByRemoteExecution);
 
 	StartDistributedExecution(execution);
 	RunDistributedExecution(execution);
@@ -979,7 +994,8 @@ CreateDistributedExecution(RowModifyLevel modLevel, List *taskList,
 						   bool hasReturning,
 						   ParamListInfo paramListInfo, TupleDesc tupleDescriptor,
 						   Tuplestorestate *tupleStore, int targetPoolSize,
-						   TransactionProperties *xactProperties, List *jobIdList)
+						   TransactionProperties *xactProperties, List *jobIdList,
+						   bool precededByRemoteExecution)
 {
 	DistributedExecution *execution =
 		(DistributedExecution *) palloc0(sizeof(DistributedExecution));
@@ -1012,6 +1028,7 @@ CreateDistributedExecution(RowModifyLevel modLevel, List *taskList,
 	execution->waitFlagsChanged = false;
 
 	execution->jobIdList = jobIdList;
+	execution->precededByRemoteExecution = precededByRemoteExecution;
 
 	/* allocate execution specific data once, on the ExecutorState memory context */
 	if (tupleDescriptor != NULL)
@@ -2355,17 +2372,9 @@ ManageWorkerPool(WorkerPool *workerPool)
 			 */
 			connectionFlags |= OPTIONAL_CONNECTION;
 		}
-		else if (UseConnectionPerPlacement() ||
-				 (list_length(workerPool->sessionList) == 0 &&
-				  SideChannelConnectionExists(workerPool->nodeName, workerPool->nodePort,
-											  NULL,
-											  NULL)))
+		else if (!CanWaitForConnection(workerPool))
 		{
-			/*
-			 * Via connection throttling, the connection establishments may be suspended
-			 * until a connection slot is empty to the remote host. When forced to use
-			 * one connection per placement, do not enforce this restriction.
-			 */
+
 			connectionFlags |= NEVER_WAIT_FOR_CONNECTION;
 		}
 
@@ -2456,6 +2465,47 @@ CanUseOptionalConnection(WorkerPool *workerPool)
 	return true;
 }
 
+
+/*
+ * CanWaitForConnection returns true if a new connection attempt can afford to
+ * wait until a new slot is avaliable in citus.shared_max_connections.
+ *
+ * In some cases, when this function returns false, it is not feasible to wait for
+ * a connection. Instead, going ahead and potentially failing the query execution
+ * is more convinient. See the comments in the function for such cases.
+ *
+ * Finally, this function should only be called when we're sure that the new connection
+ * attempt is already qualified as non-optional. In other words, all optional coonnections
+ * are by definition can wait for connections.
+ */
+static bool
+CanWaitForConnection(WorkerPool *workerPool)
+{
+	if (UseConnectionPerPlacement())
+	{
+		/*
+		 * Via connection throttling, the connection establishments may be suspended
+		 * until a connection slot is empty to the remote host. When forced to use
+		 * one connection per placement, do not enforce this restriction.
+		 */
+		return false;
+	}
+	else if (list_length(workerPool->sessionList) == 0 &&
+			 workerPool->distributedExecution->precededByRemoteExecution)
+	{
+		/*
+		 * If any subPlans have been executed, we cannot wait to get the first
+		 * connection for the execution. The reason is that we might have many
+		 * concurrent backends which have executed subPlans, and requires at
+		 * least one more connnection to proceed and finish the execution. However,
+		 * if we let them wait, none would proceed and we'd end-up with an un-detected
+		 * deadlock on the waitersConditionVariable.
+		 */
+		return false;
+	}
+
+	return true;
+}
 
 /*
  * CheckConnectionTimeout makes sure that the execution enforces the connection

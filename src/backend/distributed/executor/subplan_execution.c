@@ -30,8 +30,11 @@ int SubPlanLevel = 0;
 /*
  * ExecuteSubPlans executes a list of subplans from a distributed plan
  * by sequentially executing each plan from the top.
+ *
+ * The function returns true if any subPlan is sent to any of the remote
+ * nodes.
  */
-void
+bool
 ExecuteSubPlans(DistributedPlan *distributedPlan)
 {
 	uint64 planId = distributedPlan->planId;
@@ -40,9 +43,10 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 	if (subPlanList == NIL)
 	{
 		/* no subplans to execute */
-		return;
+		return false;
 	}
 
+	bool sentToRemote = false;
 	HTAB *intermediateResultsHash = MakeIntermediateResultHTAB();
 	RecordSubplanExecutionsOnNodes(intermediateResultsHash, distributedPlan);
 
@@ -75,7 +79,14 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 
 		ExecutePlanIntoDestReceiver(plannedStmt, params, copyDest);
 
+		if (list_length(remoteWorkerNodeList) > 0)
+		{
+			sentToRemote = true;
+		}
+
 		SubPlanLevel--;
 		FreeExecutorState(estate);
 	}
+
+	return sentToRemote;
 }
