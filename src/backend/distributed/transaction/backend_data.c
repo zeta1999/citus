@@ -69,6 +69,8 @@ typedef struct BackendManagementShmemData
 
 static void StoreAllActiveTransactions(Tuplestorestate *tupleStore, TupleDesc
 									   tupleDescriptor);
+static bool DistribuetedTransactionIdsEqual(DistributedTransactionId leftId,
+											DistributedTransactionId rightId);
 
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 static BackendManagementShmemData *backendManagementShmemData = NULL;
@@ -436,6 +438,74 @@ StoreAllActiveTransactions(Tuplestorestate *tupleStore, TupleDesc tupleDescripto
 	}
 
 	UnlockBackendSharedMemory();
+}
+
+
+/*
+ * LastBackendWithTheSameDistributedTransactionId returns true when the backend  is
+ * the last backend with the same distributed transaction id.
+ */
+bool
+LastBackendWithTheSameDistributedTransactionId(void)
+{
+	Assert(IsInDistributedTransaction(MyBackendData));
+
+	DistributedTransactionId myTransctionId = MyBackendData->transactionId;
+	bool lastBackendWithTheSameDistributedTransactionId = true;
+
+	LockBackendSharedMemory(LW_SHARED);
+
+	/* build list of starting procs */
+	for (int curBackend = 0; curBackend < MaxBackends; curBackend++)
+	{
+		PGPROC *currentProc = &ProcGlobal->allProcs[curBackend];
+		BackendData currentBackendData;
+
+		if (currentProc->pid == 0 || MyProc->pid == currentProc->pid)
+		{
+			/* unused PGPROC slot or same as the current backend */
+			continue;
+		}
+
+		GetBackendDataForProc(currentProc, &currentBackendData);
+
+		if (!IsInDistributedTransaction(&currentBackendData))
+		{
+			/* not a distributed transaction */
+			continue;
+		}
+
+		if (DistribuetedTransactionIdsEqual(currentBackendData.transactionId,
+											myTransctionId))
+		{
+			lastBackendWithTheSameDistributedTransactionId = false;
+			break;
+		}
+	}
+
+	UnlockBackendSharedMemory();
+
+	return lastBackendWithTheSameDistributedTransactionId;
+}
+
+
+/*
+ *  DistribuetedTransactionIdsEqual is a utility function  that return true if the
+ *  input distributed transactions are equal.
+ */
+static bool
+DistribuetedTransactionIdsEqual(DistributedTransactionId leftId,
+								DistributedTransactionId rightId)
+{
+	if ((leftId.transactionNumber != rightId.transactionNumber) ||
+		(leftId.timestamp != rightId.timestamp) ||
+		(leftId.initiatorNodeIdentifier != rightId.initiatorNodeIdentifier) ||
+		(leftId.transactionOriginator != rightId.transactionOriginator))
+	{
+		return false;
+	}
+
+	return true;
 }
 
 

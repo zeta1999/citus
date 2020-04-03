@@ -280,8 +280,11 @@ CoordinatedTransactionCallback(XactEvent event, void *arg)
 				 * been closed; force them closed here before running
 				 * RemoveIntermediateResultsDirectory.
 				 */
-				AtEOXact_Files(false);
-				SwallowErrors(RemoveIntermediateResultsDirectory);
+				if (LastBackendWithTheSameDistributedTransactionId())
+				{
+					AtEOXact_Files(false);
+					SwallowErrors(RemoveIntermediateResultsDirectory);
+				}
 			}
 			ResetShardPlacementTransactionState();
 
