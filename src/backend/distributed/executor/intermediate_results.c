@@ -84,6 +84,7 @@ typedef struct RemoteFileDestReceiver
 
 static void RemoteFileDestReceiverStartup(DestReceiver *dest, int operation,
 										  TupleDesc inputTupleDescriptor);
+static void InitializeIntermediateFiles(RemoteFileDestReceiver *resultDest);
 static StringInfo ConstructCopyResultStatement(const char *resultId);
 static void WriteToLocalFile(StringInfo copyData, FileCompat *fileCompat);
 static bool RemoteFileDestReceiverReceive(TupleTableSlot *slot, DestReceiver *dest);
@@ -284,84 +285,7 @@ RemoteFileDestReceiverReceive(TupleTableSlot *slot, DestReceiver *dest)
 
 	if (!resultDest->firstDataSent)
 	{
-		const char *resultId = resultDest->resultId;
-
-		if (resultDest->writeLocalFile)
-		{
-			const int fileFlags = (O_APPEND | O_CREAT | O_RDWR | O_TRUNC | PG_BINARY);
-			const int fileMode = (S_IRUSR | S_IWUSR);
-
-			/* make sure the directory exists */
-			CreateIntermediateResultsDirectory();
-
-			const char *fileName = QueryResultFileName(resultId);
-
-			resultDest->fileCompat = FileCompatFromFileStart(FileOpenForTransmit(fileName,
-																				 fileFlags,
-																				 fileMode));
-		}
-
-		List *initialNodeList = resultDest->initialNodeList;
-		List *connectionList = NIL;
-		WorkerNode *workerNode = NULL;
-		foreach_ptr(workerNode, initialNodeList)
-		{
-			int flags = 0;
-
-			const char *nodeName = workerNode->workerName;
-			int nodePort = workerNode->workerPort;
-
-			MultiConnection *connection = StartNodeConnection(flags, nodeName, nodePort);
-			ClaimConnectionExclusively(connection);
-			MarkRemoteTransactionCritical(connection);
-
-			connectionList = lappend(connectionList, connection);
-		}
-
-		FinishConnectionListEstablishment(connectionList);
-
-		/* must open transaction blocks to use intermediate results */
-		RemoteTransactionsBeginIfNecessary(connectionList);
-
-		MultiConnection *connection = NULL;
-		foreach_ptr(connection, connectionList)
-		{
-			StringInfo copyCommand = ConstructCopyResultStatement(resultId);
-
-			bool querySent = SendRemoteCommand(connection, copyCommand->data);
-			if (!querySent)
-			{
-				ReportConnectionError(connection, ERROR);
-			}
-		}
-
-		foreach_ptr(connection, connectionList)
-		{
-			bool raiseInterrupts = true;
-
-			PGresult *result = GetRemoteCommandResult(connection, raiseInterrupts);
-			if (PQresultStatus(result) != PGRES_COPY_IN)
-			{
-				ReportResultError(connection, result, ERROR);
-			}
-
-			PQclear(result);
-		}
-
-		if (copyOutState->binary)
-		{
-			/* send headers when using binary encoding */
-			resetStringInfo(copyOutState->fe_msgbuf);
-			AppendCopyBinaryHeaders(copyOutState);
-			BroadcastCopyData(copyOutState->fe_msgbuf, connectionList);
-
-			if (resultDest->writeLocalFile)
-			{
-				WriteToLocalFile(copyOutState->fe_msgbuf, &resultDest->fileCompat);
-			}
-		}
-
-		resultDest->connectionList = connectionList;
+		InitializeIntermediateFiles(resultDest);
 
 		resultDest->firstDataSent = true;
 	}
@@ -408,6 +332,91 @@ RemoteFileDestReceiverReceive(TupleTableSlot *slot, DestReceiver *dest)
 }
 
 
+static void
+InitializeIntermediateFiles(RemoteFileDestReceiver *resultDest)
+{
+	const char *resultId = resultDest->resultId;
+	CopyOutState copyOutState = resultDest->copyOutState;
+
+	if (resultDest->writeLocalFile)
+	{
+		const int fileFlags = (O_APPEND | O_CREAT | O_RDWR | O_TRUNC | PG_BINARY);
+		const int fileMode = (S_IRUSR | S_IWUSR);
+
+		/* make sure the directory exists */
+		CreateIntermediateResultsDirectory();
+
+		const char *fileName = QueryResultFileName(resultId);
+
+		resultDest->fileCompat = FileCompatFromFileStart(FileOpenForTransmit(fileName,
+																			 fileFlags,
+																			 fileMode));
+	}
+
+	List *initialNodeList = resultDest->initialNodeList;
+	List *connectionList = NIL;
+	WorkerNode *workerNode = NULL;
+	foreach_ptr(workerNode, initialNodeList)
+	{
+		int flags = 0;
+
+		const char *nodeName = workerNode->workerName;
+		int nodePort = workerNode->workerPort;
+
+		MultiConnection *connection = StartNodeConnection(flags, nodeName, nodePort);
+		ClaimConnectionExclusively(connection);
+		MarkRemoteTransactionCritical(connection);
+
+		connectionList = lappend(connectionList, connection);
+	}
+
+	FinishConnectionListEstablishment(connectionList);
+
+	/* must open transaction blocks to use intermediate results */
+	RemoteTransactionsBeginIfNecessary(connectionList);
+
+	MultiConnection *connection = NULL;
+	foreach_ptr(connection, connectionList)
+	{
+		StringInfo copyCommand = ConstructCopyResultStatement(resultId);
+
+		bool querySent = SendRemoteCommand(connection, copyCommand->data);
+		if (!querySent)
+		{
+			ReportConnectionError(connection, ERROR);
+		}
+	}
+
+	foreach_ptr(connection, connectionList)
+	{
+		bool raiseInterrupts = true;
+
+		PGresult *result = GetRemoteCommandResult(connection, raiseInterrupts);
+		if (PQresultStatus(result) != PGRES_COPY_IN)
+		{
+			ReportResultError(connection, result, ERROR);
+		}
+
+		PQclear(result);
+	}
+
+	if (copyOutState->binary)
+	{
+		/* send headers when using binary encoding */
+		resetStringInfo(copyOutState->fe_msgbuf);
+		AppendCopyBinaryHeaders(copyOutState);
+		BroadcastCopyData(copyOutState->fe_msgbuf, connectionList);
+
+		if (resultDest->writeLocalFile)
+		{
+			WriteToLocalFile(copyOutState->fe_msgbuf, &resultDest->fileCompat);
+		}
+	}
+
+	resultDest->connectionList = connectionList;
+}
+
+
 /*
  * WriteToLocalResultsFile writes the bytes in a StringInfo to a local file.
  */
@@ -434,6 +443,13 @@ static void
 RemoteFileDestReceiverShutdown(DestReceiver *destReceiver)
 {
 	RemoteFileDestReceiver *resultDest = (RemoteFileDestReceiver *) destReceiver;
+
+	if (!resultDest->firstDataSent)
+	{
+		InitializeIntermediateFiles(resultDest);
+
+		resultDest->firstDataSent = true;
+	}
 
 	List *connectionList = resultDest->connectionList;
 	CopyOutState copyOutState = resultDest->copyOutState;
