@@ -71,6 +71,8 @@ typedef struct RemoteFileDestReceiver
 	bool writeLocalFile;
 	FileCompat fileCompat;
 
+	bool firstDataSent;
+
 	/* state on how to copy out data types */
 	CopyOutState copyOutState;
 	FmgrInfo *columnOutputFunctions;
@@ -233,13 +235,8 @@ RemoteFileDestReceiverStartup(DestReceiver *dest, int operation,
 {
 	RemoteFileDestReceiver *resultDest = (RemoteFileDestReceiver *) dest;
 
-	const char *resultId = resultDest->resultId;
-
 	const char *delimiterCharacter = "\t";
 	const char *nullPrintCharacter = "\\N";
-
-	List *initialNodeList = resultDest->initialNodeList;
-	List *connectionList = NIL;
 
 	resultDest->tupleDescriptor = inputTupleDescriptor;
 
@@ -255,87 +252,6 @@ RemoteFileDestReceiverStartup(DestReceiver *dest, int operation,
 
 	resultDest->columnOutputFunctions = ColumnOutputFunctions(inputTupleDescriptor,
 															  copyOutState->binary);
-
-	if (resultDest->writeLocalFile)
-	{
-		const int fileFlags = (O_APPEND | O_CREAT | O_RDWR | O_TRUNC | PG_BINARY);
-		const int fileMode = (S_IRUSR | S_IWUSR);
-
-		/* make sure the directory exists */
-		CreateIntermediateResultsDirectory();
-
-		const char *fileName = QueryResultFileName(resultId);
-
-		resultDest->fileCompat = FileCompatFromFileStart(FileOpenForTransmit(fileName,
-																			 fileFlags,
-																			 fileMode));
-	}
-
-	WorkerNode *workerNode = NULL;
-	foreach_ptr(workerNode, initialNodeList)
-	{
-		const char *nodeName = workerNode->workerName;
-		int nodePort = workerNode->workerPort;
-
-		/*
-		 * We prefer to use a connection that is not associcated with
-		 * any placements. The reason is that we claim this connection
-		 * exclusively and that would prevent the consecutive DML/DDL
-		 * use the same connection.
-		 */
-		int flags = REQUIRE_SIDECHANNEL;
-
-		MultiConnection *connection = StartNodeConnection(flags, nodeName, nodePort);
-		ClaimConnectionExclusively(connection);
-		MarkRemoteTransactionCritical(connection);
-
-		connectionList = lappend(connectionList, connection);
-	}
-
-	FinishConnectionListEstablishment(connectionList);
-
-	/* must open transaction blocks to use intermediate results */
-	RemoteTransactionsBeginIfNecessary(connectionList);
-
-	MultiConnection *connection = NULL;
-	foreach_ptr(connection, connectionList)
-	{
-		StringInfo copyCommand = ConstructCopyResultStatement(resultId);
-
-		bool querySent = SendRemoteCommand(connection, copyCommand->data);
-		if (!querySent)
-		{
-			ReportConnectionError(connection, ERROR);
-		}
-	}
-
-	foreach_ptr(connection, connectionList)
-	{
-		bool raiseInterrupts = true;
-
-		PGresult *result = GetRemoteCommandResult(connection, raiseInterrupts);
-		if (PQresultStatus(result) != PGRES_COPY_IN)
-		{
-			ReportResultError(connection, result, ERROR);
-		}
-
-		PQclear(result);
-	}
-
-	if (copyOutState->binary)
-	{
-		/* send headers when using binary encoding */
-		resetStringInfo(copyOutState->fe_msgbuf);
-		AppendCopyBinaryHeaders(copyOutState);
-		BroadcastCopyData(copyOutState->fe_msgbuf, connectionList);
-
-		if (resultDest->writeLocalFile)
-		{
-			WriteToLocalFile(copyOutState->fe_msgbuf, &resultDest->fileCompat);
-		}
-	}
-
-	resultDest->connectionList = connectionList;
 }
 
 
@@ -364,11 +280,96 @@ static bool
 RemoteFileDestReceiverReceive(TupleTableSlot *slot, DestReceiver *dest)
 {
 	RemoteFileDestReceiver *resultDest = (RemoteFileDestReceiver *) dest;
+	CopyOutState copyOutState = resultDest->copyOutState;
+
+	if (!resultDest->firstDataSent)
+	{
+		const char *resultId = resultDest->resultId;
+
+		if (resultDest->writeLocalFile)
+		{
+			const int fileFlags = (O_APPEND | O_CREAT | O_RDWR | O_TRUNC | PG_BINARY);
+			const int fileMode = (S_IRUSR | S_IWUSR);
+
+			/* make sure the directory exists */
+			CreateIntermediateResultsDirectory();
+
+			const char *fileName = QueryResultFileName(resultId);
+
+			resultDest->fileCompat = FileCompatFromFileStart(FileOpenForTransmit(fileName,
+																				 fileFlags,
+																				 fileMode));
+		}
+
+		List *initialNodeList = resultDest->initialNodeList;
+		List *connectionList = NIL;
+		WorkerNode *workerNode = NULL;
+		foreach_ptr(workerNode, initialNodeList)
+		{
+			int flags = 0;
+
+			const char *nodeName = workerNode->workerName;
+			int nodePort = workerNode->workerPort;
+
+			MultiConnection *connection = StartNodeConnection(flags, nodeName, nodePort);
+			ClaimConnectionExclusively(connection);
+			MarkRemoteTransactionCritical(connection);
+
+			connectionList = lappend(connectionList, connection);
+		}
+
+		FinishConnectionListEstablishment(connectionList);
+
+		/* must open transaction blocks to use intermediate results */
+		RemoteTransactionsBeginIfNecessary(connectionList);
+
+		MultiConnection *connection = NULL;
+		foreach_ptr(connection, connectionList)
+		{
+			StringInfo copyCommand = ConstructCopyResultStatement(resultId);
+
+			bool querySent = SendRemoteCommand(connection, copyCommand->data);
+			if (!querySent)
+			{
+				ReportConnectionError(connection, ERROR);
+			}
+		}
+
+		foreach_ptr(connection, connectionList)
+		{
+			bool raiseInterrupts = true;
+
+			PGresult *result = GetRemoteCommandResult(connection, raiseInterrupts);
+			if (PQresultStatus(result) != PGRES_COPY_IN)
+			{
+				ReportResultError(connection, result, ERROR);
+			}
+
+			PQclear(result);
+		}
+
+		if (copyOutState->binary)
+		{
+			/* send headers when using binary encoding */
+			resetStringInfo(copyOutState->fe_msgbuf);
+			AppendCopyBinaryHeaders(copyOutState);
+			BroadcastCopyData(copyOutState->fe_msgbuf, connectionList);
+
+			if (resultDest->writeLocalFile)
+			{
+				WriteToLocalFile(copyOutState->fe_msgbuf, &resultDest->fileCompat);
+			}
+		}
+
+		resultDest->connectionList = connectionList;
+
+		resultDest->firstDataSent = true;
+	}
+
 
 	TupleDesc tupleDescriptor = resultDest->tupleDescriptor;
 
 	List *connectionList = resultDest->connectionList;
-	CopyOutState copyOutState = resultDest->copyOutState;
 	FmgrInfo *columnOutputFunctions = resultDest->columnOutputFunctions;
 
 	StringInfo copyData = copyOutState->fe_msgbuf;
