@@ -260,7 +260,6 @@ StartNodeUserDatabaseConnection(uint32 flags, const char *hostname, int32 port,
 								const char *user, const char *database)
 {
 	ConnectionHashKey key;
-	MultiConnection *connection;
 	bool found;
 
 	/* do some minimal input checks */
@@ -313,7 +312,7 @@ StartNodeUserDatabaseConnection(uint32 flags, const char *hostname, int32 port,
 	if (!(flags & FORCE_NEW_CONNECTION))
 	{
 		/* check connection cache for a connection that's not already in use */
-		connection = FindAvailableConnection(entry->connections, flags);
+		MultiConnection *connection = FindAvailableConnection(entry->connections, flags);
 		if (connection)
 		{
 			GivePurposeToConnection(connection, flags);
@@ -358,6 +357,7 @@ StartNodeUserDatabaseConnection(uint32 flags, const char *hostname, int32 port,
 	 * Either no caching desired, or no pre-established, non-claimed,
 	 * connection present. Initiate connection establishment.
 	 */
+	volatile MultiConnection *connection = NULL;
 	PG_TRY();
 	{
 		connection = StartConnectionEstablishment(&key);
@@ -369,18 +369,21 @@ StartNodeUserDatabaseConnection(uint32 flags, const char *hostname, int32 port,
 		 * here otherwise we'd leak the increment we have done for this
 		 * connection attempt.
 		 */
-		DecrementSharedConnectionCounter(hostname, port);
+		CitusPQFinish((MultiConnection *) connection);
 
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
-	dlist_push_tail(entry->connections, &connection->connectionNode);
 
-	ResetShardPlacementAssociation(connection);
-	GivePurposeToConnection(connection, flags);
+	MultiConnection *newConnection = (MultiConnection *) connection;
 
-	return connection;
+	dlist_push_tail(entry->connections, &newConnection->connectionNode);
+
+	ResetShardPlacementAssociation(newConnection);
+	GivePurposeToConnection(newConnection, flags);
+
+	return newConnection;
 }
 
 
@@ -1013,10 +1016,10 @@ CitusPQFinish(MultiConnection *connection)
 	if (connection->pgConn != NULL)
 	{
 		DecrementSharedConnectionCounter(connection->hostname, connection->port);
-	}
 
-	PQfinish(connection->pgConn);
-	connection->pgConn = NULL;
+		PQfinish(connection->pgConn);
+		connection->pgConn = NULL;
+	}
 }
 
 
