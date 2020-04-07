@@ -198,7 +198,7 @@ RemoveInactiveNodesFromSharedConnections(void)
 
 		if (workerNode == NULL || !workerNode->isActive)
 		{
-			hash_search(SharedConnStatsHash, connectionEntry, HASH_REMOVE, NULL);
+			hash_search(SharedConnStatsHash, &connectionKey, HASH_REMOVE, NULL);
 			//elog(INFO, "removing %s %d", connectionKey.hostname, connectionKey.port);
 		}
 	}
@@ -438,8 +438,9 @@ DecrementSharedConnectionCounter(const char *hostname, int port)
 
 	/* we should never decrement a counter that has not been incremented */
 	if (connectionEntry->connectionCount < 1)
+	{
 		elog(WARNING, "DecrementSharedConnectionCounter %s %d connectionEntry->connectionCount:%d",hostname, port, connectionEntry->connectionCount);
-
+	}
 	connectionEntry->connectionCount -= 1;
 
 	UnLockConnectionSharedMemory();

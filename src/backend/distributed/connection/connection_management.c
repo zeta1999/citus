@@ -369,7 +369,14 @@ StartNodeUserDatabaseConnection(uint32 flags, const char *hostname, int32 port,
 		 * here otherwise we'd leak the increment we have done for this
 		 * connection attempt.
 		 */
-		CitusPQFinish((MultiConnection *) connection);
+		if (connection->pgConn == NULL)
+		{
+			DecrementSharedConnectionCounter(hostname, port);
+		}
+		else
+		{
+			CitusPQFinish(connection);
+		}
 
 		PG_RE_THROW();
 	}
