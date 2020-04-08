@@ -5,3 +5,4 @@
 #include "udfs/citus_extradata_container/9.3-2.sql"
 #include "udfs/update_distributed_table_colocation/9.3-2.sql"
 #include "udfs/replicate_reference_tables/9.3-2.sql"
+#include "udfs/create_citus_local_table/9.3-2.sql"
