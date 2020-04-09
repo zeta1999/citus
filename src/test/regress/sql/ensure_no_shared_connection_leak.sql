@@ -70,7 +70,7 @@ ORDER BY 1;
 SELECT
 	result, success
 FROM
-	run_command_on_workers($$select count(*) from pg_stat_activity WHERE backend_type = 'client backend';$$)
+	run_command_on_workers($$select array_agg(query) from pg_stat_activity WHERE backend_type = 'client backend';$$)
 ORDER BY 1, 2;
 
 
