@@ -110,7 +110,7 @@ typedef struct CitusLocalPlanRestrictionContext
 	bool citusLocalQuery;
 
 	/* citus local table RTE list is set in distributed_planner hook */
-	List *citusLocalTableRTEList;
+	bool isLocalReferenceJoin;
 } CitusLocalPlanRestrictionContext;
 
 typedef struct PlannerRestrictionContext
