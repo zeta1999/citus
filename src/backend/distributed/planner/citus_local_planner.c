@@ -54,7 +54,7 @@
 
 static Job * CreateCitusLocalPlanJob(Query *query, List *localRelationRTEList);
 static void UpdateRelationOidsWithLocalShardOids(Query *query,
-												List *localRelationRTEList);
+												 List *localRelationRTEList);
 static List * CitusLocalPlanTaskList(Query *query, List *localRelationRTEList);
 
 /*
@@ -74,15 +74,24 @@ CreateCitusLocalPlan(Query *query)
 	List *referenceTableRTEList =
 		ExtractTableRTEListByDistMethod(rangeTableList, DISTRIBUTE_BY_NONE);
 
-	List *localRelationRTEList = list_concat(citusLocalTableRTEList, referenceTableRTEList);
+	List *localRelationRTEList = list_concat(citusLocalTableRTEList,
+											 referenceTableRTEList);
 
 	Assert(localRelationRTEList != NIL);
 
 	DistributedPlan *distributedPlan = CitusMakeNode(DistributedPlan);
 
 	distributedPlan->modLevel = RowModifyLevelForQuery(query);
-	distributedPlan->targetRelationId =
-		IsModifyCommand(query) ? ResultRelationOidForQuery(query) : InvalidOid;
+
+
+	int resultRelationId = IsModifyCommand(query) ? ResultRelationOidForQuery(query) :
+						   IsModifyCommand(query);
+
+	if (IsCitusTable(resultRelationId))
+	{
+		distributedPlan->targetRelationId = resultRelationId;
+	}
+
 	distributedPlan->routerExecutable = true;
 
 	distributedPlan->workerJob =
@@ -138,7 +147,7 @@ UpdateRelationOidsWithLocalShardOids(Query *query, List *localRelationRTEList)
 		 * It is callers reponsibility to pass relations that has single shards,
 		 * namely citus local tables or reference tables.
 		 */
-		Assert (cacheEntry->shardIntervalArrayLength == 1);
+		Assert(cacheEntry->shardIntervalArrayLength == 1);
 
 		ShardInterval *shardInterval = cacheEntry->sortedShardIntervalArray[0];
 		uint64 localShardId = shardInterval->shardId;
@@ -146,7 +155,7 @@ UpdateRelationOidsWithLocalShardOids(Query *query, List *localRelationRTEList)
 		Oid tableLocalShardOid = GetTableLocalShardOid(relationId, localShardId);
 
 		/* it is callers reponsibility to pass relations that has local placements */
-		Assert (OidIsValid(tableLocalShardOid));
+		Assert(OidIsValid(tableLocalShardOid));
 
 		/* override the relation id with the shard's relation id */
 		rangeTableEntry->relid = tableLocalShardOid;
@@ -193,6 +202,8 @@ CreateCitusLocalPlanJob(Query *query, List *noDistKeyTableRTEList)
 static List *
 CitusLocalPlanTaskList(Query *query, List *localRelationRTEList)
 {
+	uint64 anchorShardId = INVALID_SHARD_ID;
+
 	List *shardIntervalList = NIL;
 	List *taskPlacementList = NIL;
 
@@ -202,13 +213,15 @@ CitusLocalPlanTaskList(Query *query, List *localRelationRTEList)
 	{
 		Oid tableOid = rangeTableEntry->relid;
 
-		Assert(IsCitusTable(tableOid) && CitusTableWithoutDistributionKey(PartitionMethod(
-																			  tableOid)));
+		if (!IsCitusTable(tableOid))
+		{
+			continue;
+		}
 
 		const CitusTableCacheEntry *cacheEntry = GetCitusTableCacheEntry(tableOid);
 
-		Assert(cacheEntry != NULL && CitusTableWithoutDistributionKey(
-				   cacheEntry->partitionMethod));
+		Assert(cacheEntry != NULL &&
+			   CitusTableWithoutDistributionKey(cacheEntry->partitionMethod));
 
 		ShardInterval *shardInterval = cacheEntry->sortedShardIntervalArray[0];
 		shardIntervalList = lappend(shardIntervalList, shardInterval);
@@ -218,13 +231,13 @@ CitusLocalPlanTaskList(Query *query, List *localRelationRTEList)
 		List *shardPlacements = ActiveShardPlacementList(localShardId);
 
 		taskPlacementList = list_concat(taskPlacementList, shardPlacements);
+
+		/* save it for now, we will override for modifications below */
+		anchorShardId = localShardId;
 	}
 
 	/* prevent possible self dead locks */
 	taskPlacementList = SortList(taskPlacementList, CompareShardPlacementsByShardId);
-
-	/* pick the shard having the lowest shardId as the anchor shard */
-	uint64 anchorShardId = ((ShardPlacement *) linitial(taskPlacementList))->shardId;
 
 	TaskType taskType = TASK_TYPE_INVALID_FIRST;
 
@@ -245,16 +258,29 @@ CitusLocalPlanTaskList(Query *query, List *localRelationRTEList)
 
 	Task *task = CreateTask(taskType);
 
-	if (query->commandType == CMD_INSERT)
+	if (IsModifyCommand(query))
 	{
 		/* only required for INSERTs */
-		task->anchorDistributedTableId = query->resultRelation;
+		int resultRelationId = ResultRelationOidForQuery(query);
+
+		if (IsCitusTable(resultRelationId))
+		{
+			task->anchorDistributedTableId = ResultRelationOidForQuery(query);
+
+			List *anchorShardInvervalList = LoadShardIntervalList(
+				task->anchorDistributedTableId);
+
+			ShardInterval *anchorShardInterval = (ShardInterval *) linitial(
+				anchorShardInvervalList);
+			anchorShardId = anchorShardInterval->shardId;
+		}
 	}
 
 	task->anchorShardId = anchorShardId;
 	task->taskPlacementList = taskPlacementList;
 	task->relationShardList =
-		RelationShardListForShardIntervalList(list_make1(shardIntervalList), &shardsPresent);
+		RelationShardListForShardIntervalList(list_make1(shardIntervalList),
+											  &shardsPresent);
 
 	/*
 	 * Replace citus local tables with their local shards and acquire necessary
@@ -267,13 +293,12 @@ CitusLocalPlanTaskList(Query *query, List *localRelationRTEList)
 }
 
 
-
 bool
 ShouldUseCitusLocalPlanner(RTEListProperties *rteListProperties)
 {
 	if (!rteListProperties->hasCitusTable)
 	{
-		return  false;
+		return false;
 	}
 
 	if (rteListProperties->hasCitusLocalTable)
