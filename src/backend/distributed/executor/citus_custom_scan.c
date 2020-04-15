@@ -332,6 +332,11 @@ CitusBeginModifyScan(CustomScanState *node, EState *estate, int eflags)
 		CopyDistributedPlanWithoutCache(originalDistributedPlan);
 	scanState->distributedPlan = currentPlan;
 
+	if (!IsCitusTable(currentPlan->targetRelationId))
+	{
+		return;
+	}
+
 	Job *workerJob = currentPlan->workerJob;
 	Query *jobQuery = workerJob->jobQuery;
 

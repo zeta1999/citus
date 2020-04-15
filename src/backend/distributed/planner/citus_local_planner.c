@@ -36,6 +36,7 @@
  */
 
 #include "distributed/citus_local_planner.h"
+#include "distributed/reference_table_utils.h"
 #include "distributed/deparse_shard_query.h"
 #include "distributed/insert_select_planner.h"
 #include "distributed/listutils.h"
@@ -196,6 +197,8 @@ CreateCitusLocalPlanJob(Query *query, List *noDistKeyTableRTEList)
 	return job;
 }
 
+static List *
+ActiveShardPlacementsForTableOnGroup(Oid relationId, int32 groupId);
 
 /*
  * CitusLocalPlanTaskList returns a single element task list including the
@@ -230,7 +233,7 @@ CitusLocalPlanTaskList(Query *query, List *localRelationRTEList)
 
 		uint64 localShardId = shardInterval->shardId;
 
-		List *shardPlacements = ActiveShardPlacementList(localShardId);
+		List *shardPlacements = ActiveShardPlacementsForTableOnGroup(tableOid, COORDINATOR_GROUP_ID);
 
 		taskPlacementList = list_concat(taskPlacementList, shardPlacements);
 
@@ -293,6 +296,35 @@ CitusLocalPlanTaskList(Query *query, List *localRelationRTEList)
 
 	return list_make1(task);
 }
+/*
+ * ActiveShardPlacementsForTableOnGroup accepts a relationId and a group and
+ * returns a list of ShardPlacement's representing all of the placements for
+ * the table which reside on the group.
+ */
+static List *
+ActiveShardPlacementsForTableOnGroup(Oid relationId, int32 groupId)
+{
+	List *groupActivePlacementList = NIL;
+
+	List *shardIntervalList = LoadShardIntervalList(relationId);
+	ShardInterval *shardInterval = NULL;
+	foreach_ptr(shardInterval, shardIntervalList)
+	{
+		uint64 shardId = shardInterval->shardId;
+
+		List *activeShardPlacementList = ActiveShardPlacementList(shardId);
+		ShardPlacement *shardPlacement = NULL;
+		foreach_ptr(shardPlacement, activeShardPlacementList)
+		{
+			if (shardPlacement->groupId == groupId)
+			{
+				groupActivePlacementList = lappend(groupActivePlacementList, shardPlacement);
+			}
+		}
+	}
+
+	return groupActivePlacementList;
+}
 
 
 bool
@@ -319,22 +351,11 @@ ShouldUseCitusLocalPlanner(RTEListProperties *rteListProperties)
 		return false;
 	}
 
-	if (rteListProperties->hasReferenceTable &&
-		!rteListProperties->hasCitusLocalTable &&
-		!rteListProperties->hasLocalTable)
-	{
-		/*
-		 * We don't want queries with only reference tables to
-		 * go from this planner.
-		 */
-		return false;
-	}
 
 	/*
-	 * Any other combinations of citus local, postgres local
-	 * and reference tables should be planned by this planner.
+	 * As long as
 	 */
-	return true;
+	return rteListProperties->hasCitusLocalTable || rteListProperties->hasLocalTable;
 }
 
 
@@ -343,8 +364,7 @@ ShouldUseCitusLocalPlanner(RTEListProperties *rteListProperties)
  * is an unsupported "citus local table" query.
  */
 void
-ErrorIfUnsupportedQueryWithCitusLocalTables(Query *query,
-											RTEListProperties *rteListProperties)
+ErrorIfUnsupportedQueryWithCitusLocalTables(Query *query)
 {
 	bool isModifyCommand = IsModifyCommand(query);
 
@@ -352,12 +372,8 @@ ErrorIfUnsupportedQueryWithCitusLocalTables(Query *query,
 	{
 		Oid targetRelation = ResultRelationOidForQuery(query);
 
-		CitusTableCacheEntry *cacheEntry = GetCitusTableCacheEntry(targetRelation);
-		if (IsReferenceTable(targetRelation))
+		if (IsCitusTable(targetRelation) && IsReferenceTable(targetRelation))
 		{
-			Assert(rteListProperties->hasCitusLocalTable ||
-				   rteListProperties->hasLocalTable);
-
 			ereport(ERROR, (errmsg("cannot plan modification queries with local tables "
 								   "which modifies reference tables")));
 		}
