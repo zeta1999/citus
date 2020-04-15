@@ -298,20 +298,41 @@ ShouldUseCitusLocalPlanner(RTEListProperties *rteListProperties)
 {
 	if (!rteListProperties->hasCitusTable)
 	{
+		/* only postgres local tables should never come here, but be defensive anyway */
 		return false;
 	}
 
-	if (rteListProperties->hasCitusLocalTable)
+	if (rteListProperties->hasDistributedTable)
 	{
-		return true;
+		/* local planner doesn't know how to handle distributed tables */
+		return false;
 	}
 
-	if (rteListProperties->hasReferenceTable && CoordinatorAddedAsWorkerNode())
+	if (!(IsCoordinator() && CoordinatorAddedAsWorkerNode()))
 	{
-		return true;
+		/*
+		 * Local planner is only intended to work locally on the tables
+		 * that are on coordinator.
+		 */
+		return false;
 	}
 
-	return false;
+	if (rteListProperties->hasReferenceTable &&
+		!rteListProperties->hasCitusLocalTable &&
+		!rteListProperties->hasLocalTable)
+	{
+		/*
+		 * We don't want queries with only reference tables to
+		 * go from this planner.
+		 */
+		return false;
+	}
+
+	/*
+	 * Any other combinations of citus local, postgres local
+	 * and reference tables should be planned by this planner.
+	 */
+	return true;
 }
 
 
