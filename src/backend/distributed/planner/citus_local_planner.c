@@ -67,6 +67,8 @@ CreateCitusLocalPlan(Query *query)
 {
 	ereport(DEBUG2, (errmsg("Creating citus local plan")));
 
+	ErrorIfUnsupportedQueryWithCitusLocalTables(query);
+
 	List *rangeTableList = ExtractRangeTableEntryList(query);
 
 	List *citusLocalTableRTEList =
@@ -85,7 +87,7 @@ CreateCitusLocalPlan(Query *query)
 
 
 	int resultRelationId = IsModifyCommand(query) ? ResultRelationOidForQuery(query) :
-						   IsModifyCommand(query);
+						   InvalidOid;
 
 	if (IsCitusTable(resultRelationId))
 	{
@@ -339,108 +341,25 @@ ShouldUseCitusLocalPlanner(RTEListProperties *rteListProperties)
 /*
  * ErrorIfUnsupportedQueryWithCitusLocalTables errors out if the given query
  * is an unsupported "citus local table" query.
- *
- * A query involving citus local table is unsupported if it is:
- *  - an UPDATE/DELETE command involving reference tables or distributed
- *    tables, or
- *  - an INSERT .. SELECT query on a citus local table which selects from
- *    reference tables or distributed tables, or
- *  - a SELECT query involving distributed tables, or
- *  - a non-simple SELECT query involving reference tables
- * or:
- *  - we are not in the coordinator, or
- *  - coordinator has no placements for citus local tables.
  */
 void
-ErrorIfUnsupportedQueryWithCitusLocalTables(Query *parse,
+ErrorIfUnsupportedQueryWithCitusLocalTables(Query *query,
 											RTEListProperties *rteListProperties)
 {
-	if (!rteListProperties->hasCitusLocalTable)
-	{
-		return;
-	}
-
-	bool hasNoDistKeyTableCoordinatorPlacements = (IsCoordinator() &&
-												   CoordinatorAddedAsWorkerNode());
-
-	if (!hasNoDistKeyTableCoordinatorPlacements)
-	{
-		ereport(ERROR, (errmsg("citus can plan queries involving citus local tables "
-							   "only via coordinator")));
-	}
-
-	bool isModifyCommand = IsModifyCommand(parse);
+	bool isModifyCommand = IsModifyCommand(query);
 
 	if (isModifyCommand)
 	{
-		/* modifying queries */
+		Oid targetRelation = ResultRelationOidForQuery(query);
 
-		if (!rteListProperties->hasReferenceTable &&
-			!rteListProperties->hasDistributedTable)
+		CitusTableCacheEntry *cacheEntry = GetCitusTableCacheEntry(targetRelation);
+		if (IsReferenceTable(targetRelation))
 		{
-			return;
-		}
+			Assert(rteListProperties->hasCitusLocalTable ||
+				   rteListProperties->hasLocalTable);
 
-		if (IsUpdateOrDelete(parse))
-		{
-			/*
-			 * If query is an UPDATE / DELETE query involving a citus local
-			 * table and a reference table or a distributed table, error out.
-			 */
-			ereport(ERROR, (errmsg(
-								"cannot plan UPDATE/DELETE queries with citus local tables "
-								"involving reference tables or distributed tables")));
-		}
-
-		bool queryModifiesCitusLocalTable = false;
-		Oid resultRelationOid = ResultRelationOidForQuery(parse);
-
-		if (IsCitusTable(resultRelationOid))
-		{
-			queryModifiesCitusLocalTable = (PartitionMethod(resultRelationOid) ==
-											CITUS_LOCAL_TABLE);
-		}
-
-		if (CheckInsertSelectQuery(parse) && queryModifiesCitusLocalTable)
-		{
-			/*
-			 * If query is an INSERT .. SELECT query on a citus local table
-			 * selecting from a reference table or a distributed table error
-			 * out here.
-			 */
-			ereport(ERROR, (errmsg(
-								"cannot plan INSERT .. SELECT queries to citus local tables "
-								"selecting from reference tables or distributed tables")));
-		}
-	}
-	else
-	{
-		/* select queries */
-
-		if (rteListProperties->hasDistributedTable)
-		{
-			/*
-			 * We do not allow even simple select queries with distributed tables
-			 * and local tables, hence should do so for citus local tables.
-			 */
-			ereport(ERROR, (errmsg(
-								"cannot plan SELECT queries with citus local tables and "
-								"distributed tables")));
-		}
-
-		bool queryIsNotSimpleSelect = FindNodeCheck((Node *) parse,
-													QueryIsNotSimpleSelect);
-
-		if (rteListProperties->hasReferenceTable && queryIsNotSimpleSelect)
-		{
-			/*
-			 * If query is not a simple select query involving a citus local table
-			 * and a reference, error out here. This is because, in that case, we
-			 * will not be able to replace reference table with its local shard.
-			 */
-			ereport(ERROR, (errmsg(
-								"cannot plan non-simple SELECT queries with citus local "
-								"tables and reference tables or distributed tables")));
+			ereport(ERROR, (errmsg("cannot plan modification queries with local tables "
+								   "which modifies reference tables")));
 		}
 	}
 }
