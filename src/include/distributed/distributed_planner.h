@@ -211,7 +211,6 @@ extern struct DistributedPlan * GetDistributedPlan(CustomScan *node);
 extern void multi_relation_restriction_hook(PlannerInfo *root, RelOptInfo *relOptInfo,
 											Index restrictionIndex, RangeTblEntry *rte);
 extern bool QueryIsNotSimpleSelect(Node *node);
-extern void UpdateTablesWithoutDistKeysWithShards(Query *query, List *rangeTableList);
 extern void multi_join_restriction_hook(PlannerInfo *root,
 										RelOptInfo *joinrel,
 										RelOptInfo *outerrel,

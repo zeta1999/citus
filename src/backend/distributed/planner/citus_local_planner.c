@@ -78,16 +78,11 @@ CreateCitusLocalPlan(Query *query)
 
 	Assert(localRelationRTEList != NIL);
 
-	/*
-	 * Replace citus local tables with their local shards and acquire necessary
-	 * locks
-	 */
-	UpdateRelationOidsWithLocalShardOids(query, localRelationRTEList);
-
 	DistributedPlan *distributedPlan = CitusMakeNode(DistributedPlan);
 
 	distributedPlan->modLevel = RowModifyLevelForQuery(query);
-	distributedPlan->targetRelationId = ResultRelationOidForQuery(query);
+	distributedPlan->targetRelationId =
+		IsModifyCommand(query) ? ResultRelationOidForQuery(query) : InvalidOid;
 	distributedPlan->routerExecutable = true;
 
 	distributedPlan->workerJob =
@@ -261,6 +256,11 @@ CitusLocalPlanTaskList(Query *query, List *localRelationRTEList)
 	task->relationShardList =
 		RelationShardListForShardIntervalList(list_make1(shardIntervalList), &shardsPresent);
 
+	/*
+	 * Replace citus local tables with their local shards and acquire necessary
+	 * locks
+	 */
+	UpdateRelationOidsWithLocalShardOids(query, localRelationRTEList);
 	SetTaskQueryIfShouldLazyDeparse(task, query);
 
 	return list_make1(task);
