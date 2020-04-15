@@ -114,10 +114,18 @@ InsertSelectIntoLocalTable(Query *query)
 	if (insertSelectQuery)
 	{
 		RangeTblEntry *insertRte = ExtractResultRelationRTE(query);
-		if (!IsCitusTable(insertRte->relid))
+		if (!IsCitusTable(insertRte->relid) )
 		{
 			return true;
 		}
+
+		CitusTableCacheEntry *tableEntry = GetCitusTableCacheEntry(insertRte->relid);
+
+		if (tableEntry->partitionMethod == CITUS_LOCAL_TABLE)
+		{
+			return true;
+		}
+
 	}
 
 	return false;
