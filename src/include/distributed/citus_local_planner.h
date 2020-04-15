@@ -18,9 +18,9 @@
 
 #include "distributed/multi_physical_planner.h"
 
-extern DistributedPlan * CreateCitusLocalPlan(Query *query,
-											  PlannerRestrictionContext *
-											  plannerRestrictionContext);
+extern DistributedPlan * CreateCitusLocalPlan(Query *querys);
+
+extern bool ShouldUseCitusLocalPlanner(RTEListProperties *rteListProperties);
 extern void ErrorIfUnsupportedQueryWithCitusLocalTables(Query *parse,
 														RTEListProperties *
 														rteListProperties);

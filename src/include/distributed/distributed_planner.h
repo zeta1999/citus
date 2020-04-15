@@ -105,14 +105,6 @@ typedef struct FastPathRestrictionContext
 	bool distributionKeyHasParam;
 }FastPathRestrictionContext;
 
-typedef struct CitusLocalPlanRestrictionContext
-{
-	bool citusLocalQuery;
-
-	/* citus local table RTE list is set in distributed_planner hook */
-	bool isLocalReferenceJoin;
-} CitusLocalPlanRestrictionContext;
-
 typedef struct PlannerRestrictionContext
 {
 	RelationRestrictionContext *relationRestrictionContext;
@@ -125,8 +117,6 @@ typedef struct PlannerRestrictionContext
 	 * Instead, we keep this struct to pass some extra information.
 	 */
 	FastPathRestrictionContext *fastPathRestrictionContext;
-
-	CitusLocalPlanRestrictionContext *citusLocalPlanRestrictionContext;
 
 	bool hasSemiJoin;
 	MemoryContext memoryContext;

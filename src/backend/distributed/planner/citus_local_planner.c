@@ -60,7 +60,7 @@ static List * CitusLocalPlanTaskList(Query *query, List *noDistKeyTableRTEList);
  * the only appropriate planner function.
  */
 DistributedPlan *
-CreateCitusLocalPlan(Query *query, PlannerRestrictionContext *plannerRestrictionContext)
+CreateCitusLocalPlan(Query *query)
 {
 	ereport(DEBUG2, (errmsg("Creating citus local plan")));
 
@@ -68,15 +68,9 @@ CreateCitusLocalPlan(Query *query, PlannerRestrictionContext *plannerRestriction
 
 	List *noDistKeyTableRTEList = ExtractTableRTEListByDistMethod(rangeTableList,
 																  CITUS_LOCAL_TABLE);
+	List *referenceTableRTEList = ExtractTableRTEListByDistMethod(rangeTableList,DISTRIBUTE_BY_NONE);
 
-	if (plannerRestrictionContext->citusLocalPlanRestrictionContext->isLocalReferenceJoin)
-	{
-		List *referenceTableRTEList = ExtractTableRTEListByDistMethod(rangeTableList,
-																	  DISTRIBUTE_BY_NONE);
-
-		noDistKeyTableRTEList = list_concat(noDistKeyTableRTEList,
-											referenceTableRTEList);
-	}
+	noDistKeyTableRTEList = list_concat(noDistKeyTableRTEList, referenceTableRTEList);
 
 	Assert(noDistKeyTableRTEList != NIL);
 
@@ -149,7 +143,10 @@ CitusLocalPlanTaskList(Query *query, List *noDistKeyTableRTEList)
 		const ShardInterval *shardInterval = cacheEntry->sortedShardIntervalArray[0];
 		uint64 localShardId = shardInterval->shardId;
 
-		List *shardPlacements = ActiveShardPlacementList(localShardId);
+		//List *shardPlacements = ActiveShardPlacementList(localShardId);
+
+		List *shardPlacements = GroupShardPlacementsForTableOnGroup(tableOid,
+															   COORDINATOR_GROUP_ID);
 
 		taskPlacementList = list_concat(taskPlacementList, shardPlacements);
 	}
@@ -182,6 +179,29 @@ CitusLocalPlanTaskList(Query *query, List *noDistKeyTableRTEList)
 	SetTaskQueryIfShouldLazyDeparse(task, query);
 
 	return list_make1(task);
+}
+
+
+
+bool
+ShouldUseCitusLocalPlanner(RTEListProperties *rteListProperties)
+{
+	if (!rteListProperties->hasCitusTable)
+	{
+		return  false;
+	}
+
+	if (rteListProperties->hasCitusLocalTable)
+	{
+		return true;
+	}
+
+	if (rteListProperties->hasReferenceTable && CoordinatorAddedAsWorkerNode())
+	{
+		return true;
+	}
+
+	return false;
 }
 
 
