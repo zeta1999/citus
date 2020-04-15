@@ -43,6 +43,7 @@
 #include "distributed/multi_physical_planner.h"
 #include "distributed/multi_router_planner.h"
 #include "distributed/shardinterval_utils.h"
+#include "distributed/shard_utils.h"
 
 /* make_ands_explicit */
 #if PG_VERSION_NUM >= PG_VERSION_12
@@ -51,8 +52,10 @@
 #include "optimizer/clauses.h"
 #endif
 
-static Job * CreateCitusLocalPlanJob(Query *query, List *noDistKeyTableRTEList);
-static List * CitusLocalPlanTaskList(Query *query, List *noDistKeyTableRTEList);
+static Job * CreateCitusLocalPlanJob(Query *query, List *localRelationRTEList);
+static void UpdateRelationOidsWithLocalShardOids(Query *query,
+												List *localRelationRTEList);
+static List * CitusLocalPlanTaskList(Query *query, List *localRelationRTEList);
 
 /*
  * CreateCitusLocalPlan creates the distributed plan to process given query
@@ -66,27 +69,31 @@ CreateCitusLocalPlan(Query *query)
 
 	List *rangeTableList = ExtractRangeTableEntryList(query);
 
-	List *noDistKeyTableRTEList = ExtractTableRTEListByDistMethod(rangeTableList,
-																  CITUS_LOCAL_TABLE);
-	List *referenceTableRTEList = ExtractTableRTEListByDistMethod(rangeTableList,DISTRIBUTE_BY_NONE);
+	List *citusLocalTableRTEList =
+		ExtractTableRTEListByDistMethod(rangeTableList, CITUS_LOCAL_TABLE);
+	List *referenceTableRTEList =
+		ExtractTableRTEListByDistMethod(rangeTableList, DISTRIBUTE_BY_NONE);
 
-	noDistKeyTableRTEList = list_concat(noDistKeyTableRTEList, referenceTableRTEList);
+	List *localRelationRTEList = list_concat(citusLocalTableRTEList, referenceTableRTEList);
 
-	Assert(noDistKeyTableRTEList != NIL);
-
-	DistributedPlan *distributedPlan = CitusMakeNode(DistributedPlan);
-
-	distributedPlan->modLevel = RowModifyLevelForQuery(query);
-	distributedPlan->workerJob = CreateCitusLocalPlanJob(query,
-														 noDistKeyTableRTEList);
-
-	/* make the final changes on the query */
+	Assert(localRelationRTEList != NIL);
 
 	/*
 	 * Replace citus local tables with their local shards and acquire necessary
 	 * locks
 	 */
-	UpdateTablesWithoutDistKeysWithShards(query, noDistKeyTableRTEList);
+	UpdateRelationOidsWithLocalShardOids(query, localRelationRTEList);
+
+	DistributedPlan *distributedPlan = CitusMakeNode(DistributedPlan);
+
+	distributedPlan->modLevel = RowModifyLevelForQuery(query);
+	distributedPlan->targetRelationId = ResultRelationOidForQuery(query);
+	distributedPlan->routerExecutable = true;
+
+	distributedPlan->workerJob =
+		CreateCitusLocalPlanJob(query, localRelationRTEList);
+
+	/* make the final changes on the query */
 
 	/* convert list of expressions into expression tree for further processing */
 	FromExpr *joinTree = query->jointree;
@@ -97,6 +104,73 @@ CreateCitusLocalPlan(Query *query)
 	}
 
 	return distributedPlan;
+}
+
+
+/*
+ * UpdateRelationOidsWithLocalShardOids replaces OID fields of the given range
+ * table entries with their local shard relation OID's and acquires necessary
+ * locks for those local shard relations.
+ *
+ * Callers of this function are responsible to provide range table entries only
+ * for citus tables without distribution keys, i.e reference tables or citus
+ * local tables.
+ */
+static void
+UpdateRelationOidsWithLocalShardOids(Query *query, List *localRelationRTEList)
+{
+#if PG_VERSION_NUM < PG_VERSION_12
+
+	/*
+	 * We cannot infer the required lock mode per range table entries as they
+	 * do not have rellockmode field if PostgreSQL version < 12.0, but we can
+	 * deduce it from the query itself for all the range table entries.
+	 */
+	LOCKMODE localShardLockMode = GetQueryLockMode(query);
+#endif
+
+	RangeTblEntry *rangeTableEntry = NULL;
+	foreach_ptr(rangeTableEntry, localRelationRTEList)
+	{
+		Oid relationId = rangeTableEntry->relid;
+		CitusTableCacheEntry *cacheEntry = GetCitusTableCacheEntry(relationId);
+
+		/* given OID should belong to a valid reference table */
+		Assert(cacheEntry != NULL &&
+			   CitusTableWithoutDistributionKey(cacheEntry->partitionMethod));
+
+		/*
+		 * It is callers reponsibility to pass relations that has single shards,
+		 * namely citus local tables or reference tables.
+		 */
+		Assert (cacheEntry->shardIntervalArrayLength == 1);
+
+		ShardInterval *shardInterval = cacheEntry->sortedShardIntervalArray[0];
+		uint64 localShardId = shardInterval->shardId;
+
+		Oid tableLocalShardOid = GetTableLocalShardOid(relationId, localShardId);
+
+		/* it is callers reponsibility to pass relations that has local placements */
+		Assert (OidIsValid(tableLocalShardOid));
+
+		/* override the relation id with the shard's relation id */
+		rangeTableEntry->relid = tableLocalShardOid;
+
+#if PG_VERSION_NUM >= PG_VERSION_12
+
+		/*
+		 * We can infer the required lock mode from the rte itself if PostgreSQL
+		 * version >= 12.0
+		 */
+		LOCKMODE localShardLockMode = rangeTableEntry->rellockmode;
+#endif
+
+		/*
+		 * Parser locks relations in addRangeTableEntry(). So we should lock the
+		 * modified ones too.
+		 */
+		LockRelationOid(tableLocalShardOid, localShardLockMode);
+	}
 }
 
 
@@ -122,15 +196,16 @@ CreateCitusLocalPlanJob(Query *query, List *noDistKeyTableRTEList)
  * task to execute the given query with citus local table(s) properly.
  */
 static List *
-CitusLocalPlanTaskList(Query *query, List *noDistKeyTableRTEList)
+CitusLocalPlanTaskList(Query *query, List *localRelationRTEList)
 {
+	List *shardIntervalList = NIL;
 	List *taskPlacementList = NIL;
 
 	/* extract shard placements & shardIds for citus local tables in the query */
-	RangeTblEntry *rte = NULL;
-	foreach_ptr(rte, noDistKeyTableRTEList)
+	RangeTblEntry *rangeTableEntry = NULL;
+	foreach_ptr(rangeTableEntry, localRelationRTEList)
 	{
-		Oid tableOid = rte->relid;
+		Oid tableOid = rangeTableEntry->relid;
 
 		Assert(IsCitusTable(tableOid) && CitusTableWithoutDistributionKey(PartitionMethod(
 																			  tableOid)));
@@ -140,13 +215,12 @@ CitusLocalPlanTaskList(Query *query, List *noDistKeyTableRTEList)
 		Assert(cacheEntry != NULL && CitusTableWithoutDistributionKey(
 				   cacheEntry->partitionMethod));
 
-		const ShardInterval *shardInterval = cacheEntry->sortedShardIntervalArray[0];
+		ShardInterval *shardInterval = cacheEntry->sortedShardIntervalArray[0];
+		shardIntervalList = lappend(shardIntervalList, shardInterval);
+
 		uint64 localShardId = shardInterval->shardId;
 
-		//List *shardPlacements = ActiveShardPlacementList(localShardId);
-
-		List *shardPlacements = GroupShardPlacementsForTableOnGroup(tableOid,
-															   COORDINATOR_GROUP_ID);
+		List *shardPlacements = ActiveShardPlacementList(localShardId);
 
 		taskPlacementList = list_concat(taskPlacementList, shardPlacements);
 	}
@@ -172,10 +246,21 @@ CitusLocalPlanTaskList(Query *query, List *noDistKeyTableRTEList)
 		Assert(false);
 	}
 
+	bool shardsPresent = false;
+
 	Task *task = CreateTask(taskType);
+
+	if (query->commandType == CMD_INSERT)
+	{
+		/* only required for INSERTs */
+		task->anchorDistributedTableId = query->resultRelation;
+	}
 
 	task->anchorShardId = anchorShardId;
 	task->taskPlacementList = taskPlacementList;
+	task->relationShardList =
+		RelationShardListForShardIntervalList(list_make1(shardIntervalList), &shardsPresent);
+
 	SetTaskQueryIfShouldLazyDeparse(task, query);
 
 	return list_make1(task);
