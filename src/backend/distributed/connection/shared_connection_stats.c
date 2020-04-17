@@ -111,18 +111,6 @@ static uint32 SharedConnectionHashHash(const void *key, Size keysize);
 PG_FUNCTION_INFO_V1(citus_remote_connection_stats);
 PG_FUNCTION_INFO_V1(invalidate_inactive_shared_connections);
 
-/*
- * invalidate_inactive_shared_connections invalidates inactive
- * and not used shared connections by removing from the global hash.
- */
-Datum
-invalidate_inactive_shared_connections(PG_FUNCTION_ARGS)
-{
-	RemoveInactiveNodesFromSharedConnections();
-	PG_RETURN_VOID();
-}
-
-
 
 /*
  * citus_remote_connection_stats returns all the avaliable information about all
@@ -140,6 +128,19 @@ citus_remote_connection_stats(PG_FUNCTION_ARGS)
 
 	/* clean up and return the tuplestore */
 	tuplestore_donestoring(tupleStore);
+
+	PG_RETURN_VOID();
+}
+
+
+/*
+ * invalidate_inactive_shared_connections invalidates inactive
+ * and not used shared connections by removing from the global hash.
+ */
+Datum
+invalidate_inactive_shared_connections(PG_FUNCTION_ARGS)
+{
+	RemoveInactiveNodesFromSharedConnections();
 
 	PG_RETURN_VOID();
 }
