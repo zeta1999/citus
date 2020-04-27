@@ -468,21 +468,18 @@ ExtractLocalAndRemoteTasks(bool readOnly, List *taskList, List **localTaskList,
 		/* either the local or the remote should be non-nil */
 		Assert(!(localTaskPlacementList == NIL && remoteTaskPlacementList == NIL));
 
-		if (list_length(task->taskPlacementList) == 1)
+		if (localTaskPlacementList == NIL)
+		{
+			*remoteTaskList = lappend(*remoteTaskList, task);
+		}
+		else if (remoteTaskPlacementList == NIL)
 		{
 			/*
 			 * At this point, the task has a single placement (e.g,. anchor shard
 			 * is distributed table's shard). So, it is either added to local or
 			 * remote taskList.
 			 */
-			if (localTaskPlacementList == NIL)
-			{
-				*remoteTaskList = lappend(*remoteTaskList, task);
-			}
-			else
-			{
-				*localTaskList = lappend(*localTaskList, task);
-			}
+			*localTaskList = lappend(*localTaskList, task);
 		}
 		else
 		{
