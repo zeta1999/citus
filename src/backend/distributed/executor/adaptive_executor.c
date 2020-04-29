@@ -2773,6 +2773,8 @@ ConnectionStateMachine(WorkerSession *session)
 					connection->connectionState = MULTI_CONNECTION_CONNECTED;
 				}
 
+				execution->connectionSetChanged = true;
+
 				break;
 			}
 
