@@ -208,18 +208,7 @@ typedef struct DistributedExecution
 	 * Flag to indiciate that the set of connections we are interested
 	 * in has changed and waitEventSet needs to be rebuilt.
 	 */
-	bool connectionSetChanged;
-
-	/*
-	 * Flag to indiciate that the set of wait events we are interested
-	 * in might have changed and waitEventSet needs to be updated.
-	 *
-	 * Note that we set this flag whenever we assign a value to waitFlags,
-	 * but we don't check that the waitFlags is actually different from the
-	 * previous value. So we might have some false positives for this flag,
-	 * which is OK, because in this case ModifyWaitEvent() is noop.
-	 */
-	bool waitFlagsChanged;
+	bool rebuildWaitEvents;
 
 	/*
 	 * WaitEventSet used for waiting for I/O events.
@@ -594,7 +583,6 @@ static void CheckConnectionTimeout(WorkerPool *workerPool);
 static int UsableConnectionCount(WorkerPool *workerPool);
 static long NextEventTimeout(DistributedExecution *execution);
 static WaitEventSet * BuildWaitEventSet(List *sessionList);
-static void RebuildWaitEventSetFlags(WaitEventSet *waitEventSet, List *sessionList);
 static TaskPlacementExecution * PopPlacementExecution(WorkerSession *session);
 static TaskPlacementExecution * PopAssignedPlacementExecution(WorkerSession *session);
 static TaskPlacementExecution * PopUnassignedPlacementExecution(WorkerPool *workerPool);
@@ -1064,8 +1052,7 @@ CreateDistributedExecution(RowModifyLevel modLevel, List *taskList,
 
 	execution->raiseInterrupts = true;
 
-	execution->connectionSetChanged = false;
-	execution->waitFlagsChanged = false;
+	execution->rebuildWaitEvents = false;
 
 	execution->jobIdList = jobIdList;
 
@@ -2142,7 +2129,7 @@ RunDistributedExecution(DistributedExecution *execution)
 		int eventSetSize = GetEventSetSize(execution->sessionList);
 
 		/* always (re)build the wait event set the first time */
-		execution->connectionSetChanged = true;
+		execution->rebuildWaitEvents = true;
 
 		while (execution->unfinishedTaskCount > 0 && !cancellationReceived)
 		{
@@ -2154,7 +2141,7 @@ RunDistributedExecution(DistributedExecution *execution)
 				ManageWorkerPool(workerPool);
 			}
 
-			if (execution->connectionSetChanged)
+			if (execution->rebuildWaitEvents)
 			{
 				if (events != NULL)
 				{
@@ -2168,11 +2155,6 @@ RunDistributedExecution(DistributedExecution *execution)
 				eventSetSize = RebuildWaitEventSet(execution);
 
 				events = palloc0(eventSetSize * sizeof(WaitEvent));
-			}
-			else if (execution->waitFlagsChanged)
-			{
-				RebuildWaitEventSetFlags(execution->waitEventSet, execution->sessionList);
-				execution->waitFlagsChanged = false;
 			}
 
 			/* wait for I/O events */
@@ -2236,8 +2218,7 @@ RebuildWaitEventSet(DistributedExecution *execution)
 	}
 
 	execution->waitEventSet = BuildWaitEventSet(execution->sessionList);
-	execution->connectionSetChanged = false;
-	execution->waitFlagsChanged = false;
+	execution->rebuildWaitEvents = false;
 
 	return GetEventSetSize(execution->sessionList);
 }
@@ -2482,7 +2463,7 @@ ManageWorkerPool(WorkerPool *workerPool)
 	}
 
 	INSTR_TIME_SET_CURRENT(workerPool->lastConnectionOpenTime);
-	execution->connectionSetChanged = true;
+	execution->rebuildWaitEvents = true;
 }
 
 
@@ -2773,6 +2754,13 @@ ConnectionStateMachine(WorkerSession *session)
 					connection->connectionState = MULTI_CONNECTION_CONNECTED;
 				}
 
+				/*
+				 * Always rebuild the wait events after PQconnectPoll(). The reason is
+				 * that PQconnectPoll() may change the underlying socket, and there is no
+				 * proper way for us to understand that.
+				 */
+				execution->rebuildWaitEvents = true;
+
 				break;
 			}
 
@@ -2855,7 +2843,7 @@ ConnectionStateMachine(WorkerSession *session)
 				ShutdownConnection(connection);
 
 				/* remove connection from wait event set */
-				execution->connectionSetChanged = true;
+				execution->rebuildWaitEvents = true;
 
 				/*
 				 * Reset the transaction state machine since CloseConnection()
@@ -3186,7 +3174,7 @@ UpdateConnectionWaitFlags(WorkerSession *session, int waitFlags)
 	connection->waitFlags = waitFlags;
 
 	/* without signalling the execution, the flag changes won't be reflected */
-	execution->waitFlagsChanged = true;
+	execution->rebuildWaitEvents = true;
 }
 
 
@@ -4038,43 +4026,6 @@ GetEventSetSize(List *sessionList)
 {
 	/* additional 2 is for postmaster and latch */
 	return list_length(sessionList) + 2;
-}
-
-
-/*
- * RebuildWaitEventSetFlags modifies the given waitEventSet with the wait flags
- * for connections in the sessionList.
- */
-static void
-RebuildWaitEventSetFlags(WaitEventSet *waitEventSet, List *sessionList)
-{
-	WorkerSession *session = NULL;
-	foreach_ptr(session, sessionList)
-	{
-		MultiConnection *connection = session->connection;
-		int waitEventSetIndex = session->waitEventSetIndex;
-
-		if (connection->pgConn == NULL)
-		{
-			/* connection died earlier in the transaction */
-			continue;
-		}
-
-		if (connection->waitFlags == 0)
-		{
-			/* not currently waiting for this connection */
-			continue;
-		}
-
-		int sock = PQsocket(connection->pgConn);
-		if (sock == -1)
-		{
-			/* connection was closed */
-			continue;
-		}
-
-		ModifyWaitEvent(waitEventSet, waitEventSetIndex, connection->waitFlags, NULL);
-	}
 }
 
 
