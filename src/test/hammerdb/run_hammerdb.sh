@@ -47,10 +47,6 @@ sed -i "s@master@${BRANCH}@g" "${branch_config}"
 cd "${test_automation_dir}"
 cd ./hammerdb
 
-# TODO:: change this, for testing purposes.
-sed -i "s/pg_duration 200/pg_duration 10/g" run.tcl
-
-
 git config --global user.email "citus-bot@microsoft.com"
 git config --global user.name "citus bot"
 git add -A
