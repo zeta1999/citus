@@ -2008,6 +2008,7 @@ FindOrCreateWorkerSession(WorkerPool *workerPool, MultiConnection *connection)
 	session->connection = connection;
 	session->workerPool = workerPool;
 	session->commandsSent = 0;
+
 	dlist_init(&session->pendingTaskQueue);
 	dlist_init(&session->readyTaskQueue);
 
@@ -2751,14 +2752,16 @@ ConnectionStateMachine(WorkerSession *session)
 					break;
 				}
 
+				int beforePollSocket = PQsocket(connection->pgConn);
 				PostgresPollingStatusType pollMode = PQconnectPoll(connection->pgConn);
 
-				/*
-				 * Always rebuild the wait events after PQconnectPoll(). The reason is
-				 * that PQconnectPoll() may change the underlying socket, and there is no
-				 * proper way for us to understand that.
-				 */
-				execution->rebuildWaitEventSet = true;
+				int afterPollSocket = PQsocket(connection->pgConn);
+
+				if (beforePollSocket != afterPollSocket)
+				{
+					/* rebuild the wait events if PQconnectPoll() changed the socket */
+					execution->rebuildWaitEventSet = true;
+				}
 
 				if (pollMode == PGRES_POLLING_FAILED)
 				{
