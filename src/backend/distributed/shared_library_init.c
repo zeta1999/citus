@@ -831,6 +831,16 @@ RegisterCitusConfigVariables(void)
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
+		"citus.use_custom_path_broadcast_join",
+		gettext_noop("Allow broadcast joins to be used during path based planning"),
+		NULL,
+		&EnableBroadcastJoin,
+		true,
+		PGC_USERSET,
+		GUC_STANDARD,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
 		"citus.enable_object_propagation",
 		gettext_noop("Enables propagating object creation for more complex objects, "
 					 "schema's will always be created"),
