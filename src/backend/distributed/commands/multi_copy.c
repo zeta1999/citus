@@ -79,12 +79,14 @@
 #include "distributed/multi_physical_planner.h"
 #include "distributed/multi_router_planner.h"
 #include "distributed/multi_executor.h"
+#include "distributed/locally_reserved_shared_connection_stats.h"
 #include "distributed/placement_connection.h"
 #include "distributed/relation_access_tracking.h"
 #include "distributed/remote_commands.h"
 #include "distributed/remote_transaction.h"
 #include "distributed/resource_lock.h"
 #include "distributed/shard_pruning.h"
+#include "distributed/shared_connection_stats.h"
 #include "distributed/version_compat.h"
 #include "distributed/worker_protocol.h"
 #include "distributed/local_multi_copy.h"
@@ -259,7 +261,7 @@ static MultiConnection * GetLeastUtilisedCopyConnection(List *connectionStateLis
 														char *nodeName, int nodePort);
 static List * ConnectionStateList(HTAB *connectionStateHash);
 static List * ConnectionStateListToNode(HTAB *connectionStateHash,
-										char *hostname, int port);
+										const char *hostname, int32 port);
 static void InitializeCopyShardState(CopyShardState *shardState,
 									 HTAB *connectionStateHash,
 									 uint64 shardId, bool stopOnFailure, bool
@@ -814,6 +816,12 @@ OpenCopyConnectionsForNewShards(CopyStmt *copyStatement,
 
 		MultiConnection *connection = GetPlacementConnection(connectionFlags, placement,
 															 nodeUser);
+
+		/*
+		 * This code-path doesn't support optional connections, so we don't expect
+		 * NULL connections.
+		 */
+		Assert(connection != NULL);
 
 		if (PQstatus(connection->pgConn) != CONNECTION_OK)
 		{
@@ -2265,6 +2273,15 @@ CitusCopyDestReceiverStartup(DestReceiver *dest, int operation,
 	copyDest->connectionStateHash = CreateConnectionStateHash(TopTransactionContext);
 
 	RecordRelationAccessIfReferenceTable(tableId, PLACEMENT_ACCESS_DML);
+
+	/*
+	 * For all the primary (e.g., writable) nodes, reserve a shared connection.
+	 * We do this upfront because we cannot know which nodes are going to be
+	 * accessed. Since the order of the reservation is important, we need to
+	 * do it right here. For the details on why the order important, see
+	 * the function.
+	 */
+	ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded();
 }
 
 
@@ -2584,6 +2601,12 @@ CitusCopyDestReceiverShutdown(DestReceiver *destReceiver)
 
 	List *connectionStateList = ConnectionStateList(connectionStateHash);
 	FinishLocalCopy(copyDest);
+
+	/*
+	 * We are not going to need any reserved connections for this COPY command,
+	 * so proactively deallocate all the reserved connections right now.
+	 */
+	DeallocateAllReservedConnections();
 
 	PG_TRY();
 	{
@@ -2938,6 +2961,12 @@ CitusCopyTo(CopyStmt *copyStatement, char *completionTag)
 																 shardPlacement,
 																 userName);
 
+			/*
+			 * This code-path doesn't support optional connections, so we don't expect
+			 * NULL connections.
+			 */
+			Assert(connection != NULL);
+
 			if (placementIndex == list_length(shardPlacementList) - 1)
 			{
 				/* last chance for this shard */
@@ -3286,10 +3315,10 @@ ConnectionStateList(HTAB *connectionStateHash)
 
 /*
  * ConnectionStateListToNode returns all CopyConnectionState structures in
- * the given hash.
+ * the given hash for a given hostname and port values.
  */
 static List *
-ConnectionStateListToNode(HTAB *connectionStateHash, char *hostname, int port)
+ConnectionStateListToNode(HTAB *connectionStateHash, const char *hostname, int32 port)
 {
 	List *connectionStateList = NIL;
 	HASH_SEQ_STATUS status;
@@ -3533,17 +3562,28 @@ CopyGetPlacementConnection(HTAB *connectionStateHash, ShardPlacement *placement,
 		ConnectionStateListToNode(connectionStateHash, nodeName, nodePort);
 	if (HasReachedAdaptiveExecutorPoolSize(copyConnectionStateList))
 	{
-		connection =
-			GetLeastUtilisedCopyConnection(copyConnectionStateList, nodeName, nodePort);
-
 		/*
 		 * If we've already reached the executor pool size, there should be at
 		 * least one connection to any given node.
+		 *
+		 * Note that we don't need to mark the connection as critical, since the
+		 * connection was already returned by this function before.
 		 */
-		Assert(connection != NULL);
+		connection = GetLeastUtilisedCopyConnection(copyConnectionStateList,
+													nodeName,
+													nodePort);
 
 		return connection;
 	}
+
+	/*
+	 * Enforce the requirements for adaptive connection connection
+	 * management (a.k.a., throttle connections if citus.max_shared_pool_size
+	 * reached)
+	 */
+	int adaptiveConnectionManagementFlag =
+		AdaptiveConnectionManagementFlag(list_length(copyConnectionStateList));
+	connectionFlags |= adaptiveConnectionManagementFlag;
 
 	/*
 	 * For placements that haven't been assigned a connection by a previous command
@@ -3571,6 +3611,21 @@ CopyGetPlacementConnection(HTAB *connectionStateHash, ShardPlacement *placement,
 	}
 
 	connection = GetPlacementConnection(connectionFlags, placement, nodeUser);
+	if (connection == NULL)
+	{
+		/*
+		 * The connection manager throttled any new connections, so pick an existing
+		 * connection with least utilization.
+		 *
+		 * Note that we don't need to mark the connection as critical, since the
+		 * connection was already returned by this function before.
+		 */
+		connection = GetLeastUtilisedCopyConnection(copyConnectionStateList,
+													nodeName,
+													nodePort);
+
+		return connection;
+	}
 
 	if (PQstatus(connection->pgConn) != CONNECTION_OK)
 	{
@@ -3628,6 +3683,8 @@ HasReachedAdaptiveExecutorPoolSize(List *connectionStateList)
 /*
  * GetLeastUtilisedCopyConnection returns a MultiConnection to the given node
  * with the least number of placements assigned to it.
+ *
+ * It is assumed that there exists at least one connection to the node.
  */
 static MultiConnection *
 GetLeastUtilisedCopyConnection(List *connectionStateList, char *nodeName,
@@ -3636,6 +3693,14 @@ GetLeastUtilisedCopyConnection(List *connectionStateList, char *nodeName,
 	MultiConnection *connection = NULL;
 	int minPlacementCount = PG_INT32_MAX;
 	ListCell *connectionStateCell = NULL;
+
+	/*
+	 * We only pick the least utilised connection when some connection limits are
+	 * reached such as max_shared_pool_size or max_adaptive_executor_pool_size.
+	 *
+	 * Therefore there should be some connections to choose from.
+	 */
+	Assert(list_length(connectionStateList) > 0);
 
 	foreach(connectionStateCell, connectionStateList)
 	{

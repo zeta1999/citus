@@ -27,6 +27,7 @@
 #include "distributed/intermediate_results.h"
 #include "distributed/listutils.h"
 #include "distributed/local_executor.h"
+#include "distributed/locally_reserved_shared_connection_stats.h"
 #include "distributed/multi_executor.h"
 #include "distributed/multi_explain.h"
 #include "distributed/repartition_join_execution.h"
@@ -460,6 +461,12 @@ ResetGlobalVariables()
 	CoordinatedTransactionUses2PC = false;
 	TransactionModifiedNodeMetadata = false;
 
+	/*
+	 * Make sure that we give the shared connections back to the shared
+	 * pool if any. This operation is a no-op if the reserved connections
+	 * are already given away.
+	 */
+	DeallocateAllReservedConnections();
 	ResetWorkerErrorIndication();
 }
 

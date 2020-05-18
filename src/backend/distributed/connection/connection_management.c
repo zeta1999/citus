@@ -46,6 +46,7 @@ int MaxCachedConnectionsPerWorker = 1;
 
 HTAB *ConnectionHash = NULL;
 HTAB *ConnParamsHash = NULL;
+
 MemoryContext ConnectionContext = NULL;
 
 static uint32 ConnectionHashHash(const void *key, Size keysize);
@@ -494,6 +495,36 @@ CloseAllConnectionsAfterTransaction(void)
 			connection->forceCloseAtTransactionEnd = true;
 		}
 	}
+}
+
+
+/*
+ * ConnectionAvaliableToNode returns true if the session has at least one connection
+ * established and avaliable to use to the give node.
+ */
+bool
+ConnectionAvaliableToNode(char *hostName, int nodePort, char *userName, char *database)
+{
+	ConnectionHashKey key;
+	bool found = false;
+
+	strlcpy(key.hostname, hostName, MAX_NODE_LENGTH);
+	key.port = nodePort;
+	strlcpy(key.user, userName, NAMEDATALEN);
+	strlcpy(key.database, database, NAMEDATALEN);
+
+	ConnectionHashEntry *entry =
+		(ConnectionHashEntry *) hash_search(ConnectionHash, &key, HASH_FIND, &found);
+
+	if (!found)
+	{
+		return false;
+	}
+
+	int flags = 0;
+	MultiConnection *connection = FindAvailableConnection(entry->connections, flags);
+
+	return connection != NULL;
 }
 
 

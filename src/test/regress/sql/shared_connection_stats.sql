@@ -1,6 +1,21 @@
 CREATE SCHEMA shared_connection_stats;
 SET search_path TO shared_connection_stats;
 
+SET citus.next_shard_id TO 14000000;
+
+-- returns the reserved connections per backend
+-- given that the code aggresively cleans up reserved connections
+-- this function returns empty set in all the tests
+-- In fact, we're testing that no reserved connections remain
+CREATE OR REPLACE FUNCTION citus_reserved_connection_stats(
+        OUT hostname text,
+        OUT port int,
+        OUT database_name text,
+        OUT reserved_connection_count int)
+RETURNS SETOF RECORD
+LANGUAGE C STRICT
+AS 'citus', $$citus_reserved_connection_stats$$;
+
 -- set the cached connections to zero
 -- and execute a distributed query so that
 -- we end up with zero cached connections afterwards
@@ -193,41 +208,7 @@ COMMIT;
 BEGIN;
 	-- now allow at most 2 connections for COPY
 	SET LOCAL citus.max_adaptive_executor_pool_size TO 2;
-
-COPY test FROM STDIN;
-1
-2
-3
-4
-5
-6
-7
-8
-9
-10
-11
-12
-13
-14
-15
-16
-17
-18
-19
-20
-21
-22
-23
-24
-25
-26
-27
-28
-29
-30
-31
-32
-\.
+    COPY test FROM PROGRAM 'seq 32';
 
 	SELECT
 		connection_count_to_node
@@ -239,6 +220,93 @@ COPY test FROM STDIN;
 	ORDER BY
 		hostname, port;
 ROLLBACK;
+
+-- now, show that COPY doesn't open more connections than the shared_pool_size
+
+-- now, decrease the shared pool size, and show that COPY doesn't exceed that
+ALTER SYSTEM SET citus.max_shared_pool_size TO 3;
+SELECT pg_reload_conf();
+SELECT pg_sleep(0.1);
+
+BEGIN;
+
+COPY test FROM PROGRAM 'seq 32';
+
+	SELECT
+		connection_count_to_node
+	FROM
+		citus_remote_connection_stats()
+	WHERE
+		port IN (SELECT node_port FROM master_get_active_worker_nodes()) AND
+		database_name = 'regression'
+	ORDER BY
+		hostname, port;
+ROLLBACK;
+
+-- INSERT SELECT with RETURNING/ON CONFLICT clauses should honor shared_pool_size
+-- in underlying COPY commands
+BEGIN;
+	SELECT pg_sleep(0.1);
+	INSERT INTO test SELECT i FROM generate_series(0,10) i RETURNING *;
+
+	SELECT
+		connection_count_to_node
+	FROM
+		citus_remote_connection_stats()
+	WHERE
+		port IN (SELECT node_port FROM master_get_active_worker_nodes()) AND
+		database_name = 'regression'
+	ORDER BY
+		hostname, port;
+ROLLBACK;
+
+-- COPY operations to range partitioned tables will honor max_shared_pool_size
+-- as we use a single connection to each worker
+CREATE TABLE range_table(a int);
+SELECT create_distributed_table('range_table', 'a', 'range');
+CALL public.create_range_partitioned_shards('range_table',
+                                            '{0,25,50,76}',
+                                            '{24,49,75,200}');
+BEGIN;
+	SELECT pg_sleep(0.1);
+	COPY range_table FROM PROGRAM 'seq 32';
+
+	SELECT
+		connection_count_to_node
+	FROM
+		citus_remote_connection_stats()
+	WHERE
+		port IN (SELECT node_port FROM master_get_active_worker_nodes()) AND
+		database_name = 'regression'
+	ORDER BY
+		hostname, port;
+ROLLBACK;
+
+
+-- COPY operations to reference tables will use one connection per worker
+-- so we will always honor max_shared_pool_size.
+CREATE TABLE ref_table(a int);
+SELECT create_reference_table('ref_table');
+
+BEGIN;
+	SELECT pg_sleep(0.1);
+	COPY ref_table FROM PROGRAM 'seq 32';
+
+	SELECT
+		connection_count_to_node
+	FROM
+		citus_remote_connection_stats()
+	WHERE
+		port IN (SELECT node_port FROM master_get_active_worker_nodes()) AND
+		database_name = 'regression'
+	ORDER BY
+		hostname, port;
+ROLLBACK;
+
+-- reset max_shared_pool_size to default
+ALTER SYSTEM RESET citus.max_shared_pool_size;
+SELECT pg_reload_conf();
+SELECT pg_sleep(0.1);
 
 -- now show that when max_cached_conns_per_worker > 1
 -- Citus forces the first execution to open at least 2
@@ -268,10 +336,39 @@ BEGIN;
 		hostname, port;
 COMMIT;
 
+-- we should not have any reserved connection
+-- as all of them have already been either used
+-- or cleaned up
+SELECT * FROM citus_reserved_connection_stats();
+
+BEGIN;
+	INSERT INTO test SELECT i FROM generate_series(0,100)i;
+
+	-- after COPY finishes, citus should have cleaned up all
+	-- reserved connections
+	SELECT * FROM citus_reserved_connection_stats();
+
+	-- even if we hit a single shard, all the other reserved
+	-- connections should be cleaned-up
+	INSERT INTO test SELECT 1 FROM generate_series(0,100)i;
+	SELECT * FROM citus_reserved_connection_stats();
+
+	TRUNCATE test;
+	CREATE UNIQUE INDEX test_unique_index ON test(a);
+
+	-- even if we hit a single shard and later fail, all the
+	-- other reserved connections should be cleaned-up
+	INSERT INTO test SELECT 1 FROM generate_series(0,100)i;
+ROLLBACK;
+SELECT * FROM citus_reserved_connection_stats();
+
 -- in case other tests relies on these setting, reset them
 ALTER SYSTEM RESET citus.distributed_deadlock_detection_factor;
 ALTER SYSTEM RESET citus.recover_2pc_interval;
 ALTER SYSTEM RESET citus.max_cached_conns_per_worker;
 SELECT pg_reload_conf();
 
+BEGIN;
+SET LOCAL client_min_messages TO WARNING;
 DROP SCHEMA shared_connection_stats CASCADE;
+COMMIT;
