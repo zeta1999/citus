@@ -295,7 +295,7 @@ CitusBeginSelectScan(CustomScanState *node, EState *estate, int eflags)
 	 *
 	 * TODO: evaluate stable functions
 	 */
-	ExecuteMasterEvaluableParameters(jobQuery, planState);
+	ExecuteMasterEvaluableExpressions(jobQuery, planState);
 
 	/* job query no longer has parameters, so we should not send any */
 	workerJob->parametersInJobQueryResolved = true;
@@ -346,7 +346,7 @@ CitusBeginModifyScan(CustomScanState *node, EState *estate, int eflags)
 	if (ModifyJobNeedsEvaluation(workerJob))
 	{
 		/* evaluate both functions and parameters */
-		ExecuteMasterEvaluableFunctionsAndParameters(jobQuery, planState);
+		ExecuteMasterEvaluableExpressions(jobQuery, planState);
 
 		/* job query no longer has parameters, so we should not send any */
 		workerJob->parametersInJobQueryResolved = true;

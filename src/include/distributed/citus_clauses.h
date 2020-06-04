@@ -28,7 +28,7 @@ typedef enum MasterEvaluationMode
 	/* evaluate only external parameters */
 	EVALUATE_PARAMS,
 
-	/* evaluate both the functions/expressions and the external paramaters */
+	/* evaluate both the functions/expressions and the external parameters */
 	EVALUATE_FUNCTIONS_PARAMS
 } MasterEvaluationMode;
 
@@ -44,12 +44,11 @@ typedef struct MasterEvaluationContext
 
 
 extern bool RequiresMasterEvaluation(Query *query);
-extern void ExecuteMasterEvaluableFunctionsAndParameters(Query *query,
-														 PlanState *planState);
-extern void ExecuteMasterEvaluableParameters(Query *query, PlanState *planState);
+extern void ExecuteMasterEvaluableExpressions(Query *query, PlanState *planState);
 extern Node * PartiallyEvaluateExpression(Node *expression,
 										  MasterEvaluationContext *masterEvaluationContext);
 extern bool CitusIsVolatileFunction(Node *node);
 extern bool CitusIsMutableFunction(Node *node);
+extern bool CitusIsStableFunction(Node *node);
 
 #endif /* CITUS_CLAUSES_H */

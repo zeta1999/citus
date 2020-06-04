@@ -59,28 +59,19 @@ RequiresMasterEvaluation(Query *query)
  * that can be resolved to a constant.
  */
 void
-ExecuteMasterEvaluableFunctionsAndParameters(Query *query, PlanState *planState)
+ExecuteMasterEvaluableExpressions(Query *query, PlanState *planState)
 {
 	MasterEvaluationContext masterEvaluationContext;
 
 	masterEvaluationContext.planState = planState;
-	masterEvaluationContext.evaluationMode = EVALUATE_FUNCTIONS_PARAMS;
-
-	PartiallyEvaluateExpression((Node *) query, &masterEvaluationContext);
-}
-
-
-/*
- * ExecuteMasterEvaluableParameters evaluates external parameters that can be
- * resolved to a constant.
- */
-void
-ExecuteMasterEvaluableParameters(Query *query, PlanState *planState)
-{
-	MasterEvaluationContext masterEvaluationContext;
-
-	masterEvaluationContext.planState = planState;
-	masterEvaluationContext.evaluationMode = EVALUATE_PARAMS;
+	if (query->commandType == CMD_SELECT)
+	{
+		masterEvaluationContext.evaluationMode = EVALUATE_PARAMS;
+	}
+	else
+	{
+		masterEvaluationContext.evaluationMode = EVALUATE_FUNCTIONS_PARAMS;
+	}
 
 	PartiallyEvaluateExpression((Node *) query, &masterEvaluationContext);
 }
@@ -117,8 +108,7 @@ PartiallyEvaluateExpression(Node *expression,
 											exprCollation(expression),
 											masterEvaluationContext);
 	}
-	else if (ShouldEvaluateExpression((Expr *) expression) &&
-			 ShouldEvaluateFunctionWithMasterContext(masterEvaluationContext))
+	else if (ShouldEvaluateExpression((Expr *) expression))
 	{
 		if (FindNodeCheck(expression, IsVariableExpression))
 		{
@@ -146,6 +136,17 @@ PartiallyEvaluateExpression(Node *expression,
 	}
 	else if (nodeTag == T_Query)
 	{
+		Query *query = (Query *) expression;
+		MasterEvaluationContext subContext = *masterEvaluationContext;
+		if (query->commandType == CMD_SELECT)
+		{
+			subContext.evaluationMode = EVALUATE_PARAMS;
+		}
+		else
+		{
+			subContext.evaluationMode = EVALUATE_FUNCTIONS_PARAMS;
+		}
+
 		return (Node *) query_tree_mutator((Query *) expression,
 										   PartiallyEvaluateExpression,
 										   masterEvaluationContext,
@@ -187,6 +188,10 @@ ShouldEvaluateFunctionWithMasterContext(MasterEvaluationContext *evaluationConte
 static bool
 ShouldEvaluateExpression(Expr *expression)
 {
+	/* TODO take param to say howw deep to check ....
+	 * but what if nested? nullif(func())
+	 * maybe check in citus_evaluate_expr??
+	 */
 	NodeTag nodeTag = nodeTag(expression);
 
 	switch (nodeTag)
@@ -278,7 +283,7 @@ citus_evaluate_expr(Expr *expr, Oid result_type, int32 result_typmod,
 		{
 			if (masterEvaluationContext->evaluationMode == EVALUATE_NONE)
 			{
-				/* bail out, the caller doesn't want params to be evaluated  */
+				/* bail out, the caller doesn't want params to be evaluated */
 				return expr;
 			}
 		}
@@ -358,6 +363,7 @@ citus_evaluate_expr(Expr *expr, Oid result_type, int32 result_typmod,
 							  const_val, const_is_null,
 							  resultTypByVal);
 }
+/* *INDENT-ON* */
 
 
 /*
@@ -448,4 +454,49 @@ CitusIsMutableFunction(Node *node)
 }
 
 
-/* *INDENT-ON* */
+/*
+ * CitusIsStableFunctionIdChecker checks if the given function id is
+ * a stable function other than read_intermediate_result().
+ */
+static bool
+CitusIsStableFunctionIdChecker(Oid func_id, void *context)
+{
+	if (func_id == CitusReadIntermediateResultFuncId() ||
+		func_id == CitusReadIntermediateResultArrayFuncId())
+	{
+		return false;
+	}
+	else
+	{
+		return (func_volatile(func_id) == PROVOLATILE_STABLE);
+	}
+}
+
+
+/*
+ * CitusIsStableFunction checks if the given node is a stable function
+ * other than Citus's internal functions.
+ */
+bool
+CitusIsStableFunction(Node *node)
+{
+	/* Check for mutable functions in node itself */
+	if (check_functions_in_node(node, CitusIsStableFunctionIdChecker, NULL))
+	{
+		return true;
+	}
+
+	if (IsA(node, SQLValueFunction))
+	{
+		/* all variants of SQLValueFunction are stable */
+		return true;
+	}
+
+	if (IsA(node, NextValueExpr))
+	{
+		/* NextValueExpr is volatile */
+		return true;
+	}
+
+	return false;
+}
