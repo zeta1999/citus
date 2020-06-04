@@ -17,6 +17,7 @@
 
 #include "catalog/pg_type.h"
 #include "distributed/citus_ruleutils.h"
+#include "distributed/insert_select_planner.h"
 #include "distributed/listutils.h"
 #include "distributed/metadata_cache.h"
 #include "distributed/multi_master_planner.h"
@@ -219,6 +220,8 @@ BuildSelectStatementViaStdPlanner(Query *masterQuery, List *masterTargetList,
 	 * citus_extradata_container function call in the masterQuery).
 	 */
 	remoteScan->custom_scan_tlist = copyObject(masterTargetList);
+	if (InsertSelectIntoLocalTable(masterQuery))
+		((Var *)((TargetEntry *)lfirst(remoteScan->custom_scan_tlist->head))->expr)->varno = 3;
 	remoteScan->scan.plan.targetlist = copyObject(masterTargetList);
 
 	/*

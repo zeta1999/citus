@@ -199,14 +199,14 @@ distributed_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		 * don't have a way of doing both things and therefore error out, but do
 		 * have a handy tip for users.
 		 */
-		if (InsertSelectIntoLocalTable(parse))
+/*		if (InsertSelectIntoLocalTable(parse))
 		{
 			ereport(ERROR, (errmsg("cannot INSERT rows from a distributed query into a "
 								   "local table"),
 							errhint("Consider using CREATE TEMPORARY TABLE tmp AS "
 									"SELECT ... and inserting from the temporary "
 									"table.")));
-		}
+		}*/
 
 		/*
 		 * standard_planner scribbles on it's input, but for deparsing we need the
@@ -929,6 +929,15 @@ CreateDistributedPlan(uint64 planId, Query *originalQuery, Query *query, ParamLi
 
 			distributedPlan =
 				CreateInsertSelectPlan(planId, originalQuery, plannerRestrictionContext);
+		}
+		else if(InsertSelectIntoLocalTable(originalQuery))
+		{
+			if (hasUnresolvedParams)
+			{
+				return NULL;
+			}
+			distributedPlan =
+				CreateInsertSelectIntoLocalTablePlan(planId, originalQuery, plannerRestrictionContext);
 		}
 		else
 		{

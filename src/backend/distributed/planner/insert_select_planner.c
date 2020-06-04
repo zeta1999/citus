@@ -303,6 +303,24 @@ CreateDistributedInsertSelectPlan(Query *originalQuery,
 	return distributedPlan;
 }
 
+/*
+ * CreateInsertSelectIntoLocalTablePlan
+ */
+DistributedPlan *
+CreateInsertSelectIntoLocalTablePlan(uint64 planId, Query *originalQuery, PlannerRestrictionContext *plannerRestrictionContext)
+{
+	Query * selectQuery = ((RangeTblEntry *)lsecond(originalQuery->rtable))->subquery;
+
+	MultiTreeRoot *logicalPlan = MultiLogicalPlanCreate(selectQuery, selectQuery, plannerRestrictionContext);
+	MultiLogicalPlanOptimize(logicalPlan);
+	DistributedPlan * distPlan = CreatePhysicalDistributedPlan(logicalPlan, plannerRestrictionContext);
+
+	((RangeTblEntry *)lsecond(originalQuery->rtable))->subquery = distPlan->masterQuery;
+	distPlan->masterQuery = originalQuery;
+
+	return distPlan;
+}
+
 
 /*
  * DistributedInsertSelectSupported returns NULL if the INSERT ... SELECT query
