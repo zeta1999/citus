@@ -1665,10 +1665,14 @@ SubqueryPushdownMultiNodeTree(Query *originalQuery)
 	 * expression on the LIMIT and OFFSET clauses. Note that logical optimizer
 	 * expects those clauses to be already evaluated.
 	 */
+	MasterEvaluationContext masterEvaluationContext = {
+		.evaluationMode = EVALUATE_VOLATILE
+	};
 	extendedOpNode->limitCount =
-		PartiallyEvaluateExpression(extendedOpNode->limitCount, NULL);
+		PartiallyEvaluateExpression(extendedOpNode->limitCount, &masterEvaluationContext);
 	extendedOpNode->limitOffset =
-		PartiallyEvaluateExpression(extendedOpNode->limitOffset, NULL);
+		PartiallyEvaluateExpression(extendedOpNode->limitOffset,
+									&masterEvaluationContext);
 
 	SetChild((MultiUnaryNode *) extendedOpNode, currentTopNode);
 	currentTopNode = (MultiNode *) extendedOpNode;

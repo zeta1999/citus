@@ -33,12 +33,13 @@ static Expr * citus_evaluate_expr(Expr *expr, Oid result_type, int32 result_typm
 								  MasterEvaluationContext *masterEvaluationContext);
 static bool CitusIsVolatileFunctionIdChecker(Oid func_id, void *context);
 static bool CitusIsMutableFunctionIdChecker(Oid func_id, void *context);
-static bool ShouldEvaluateExpression(Expr *expression);
-static bool ShouldEvaluateFunctionWithMasterContext(MasterEvaluationContext *
-													evaluationContext);
+static bool CitusIsStableFunctionIdChecker(Oid func_id, void *context);
+static bool ShouldEvaluateExpression(Expr *expression,
+									 MasterEvaluationContext *evaluationContext);
+
 
 /*
- * RequiresMastereEvaluation returns the executor needs to reparse and
+ * RequiresMasterEvaluation returns the executor needs to reparse and
  * try to execute this query, which is the case if the query contains
  * any stable or volatile function.
  */
@@ -47,7 +48,7 @@ RequiresMasterEvaluation(Query *query)
 {
 	if (query->commandType == CMD_SELECT)
 	{
-		return false;
+		return FindNodeCheck((Node *) query, CitusIsStableFunction);
 	}
 
 	return FindNodeCheck((Node *) query, CitusIsMutableFunction);
@@ -66,11 +67,11 @@ ExecuteMasterEvaluableExpressions(Query *query, PlanState *planState)
 	masterEvaluationContext.planState = planState;
 	if (query->commandType == CMD_SELECT)
 	{
-		masterEvaluationContext.evaluationMode = EVALUATE_PARAMS;
+		masterEvaluationContext.evaluationMode = EVALUATE_STABLE;
 	}
 	else
 	{
-		masterEvaluationContext.evaluationMode = EVALUATE_FUNCTIONS_PARAMS;
+		masterEvaluationContext.evaluationMode = EVALUATE_VOLATILE;
 	}
 
 	PartiallyEvaluateExpression((Node *) query, &masterEvaluationContext);
@@ -93,64 +94,31 @@ PartiallyEvaluateExpression(Node *expression,
 	}
 
 	NodeTag nodeTag = nodeTag(expression);
-	if (nodeTag == T_Param)
-	{
-		Param *param = (Param *) expression;
-		if (param->paramkind == PARAM_SUBLINK)
-		{
-			/* ExecInitExpr cannot handle PARAM_SUBLINK */
-			return expression;
-		}
-
-		return (Node *) citus_evaluate_expr((Expr *) expression,
-											exprType(expression),
-											exprTypmod(expression),
-											exprCollation(expression),
-											masterEvaluationContext);
-	}
-	else if (ShouldEvaluateExpression((Expr *) expression))
-	{
-		if (FindNodeCheck(expression, IsVariableExpression))
-		{
-			/*
-			 * The expression contains a variable expression (e.g. a stable function,
-			 * which has a column reference as its input). That means that we cannot
-			 * evaluate the expression on the coordinator, since the result depends
-			 * on the input.
-			 *
-			 * Skipping function evaluation for these expressions is safe in most
-			 * cases, since the function will always be re-evaluated for every input
-			 * value. An exception is function calls that call another stable function
-			 * that should not be re-evaluated, such as now().
-			 */
-			return (Node *) expression_tree_mutator(expression,
-													PartiallyEvaluateExpression,
-													masterEvaluationContext);
-		}
-
-		return (Node *) citus_evaluate_expr((Expr *) expression,
-											exprType(expression),
-											exprTypmod(expression),
-											exprCollation(expression),
-											masterEvaluationContext);
-	}
-	else if (nodeTag == T_Query)
+	if (nodeTag == T_Query)
 	{
 		Query *query = (Query *) expression;
 		MasterEvaluationContext subContext = *masterEvaluationContext;
 		if (query->commandType == CMD_SELECT)
 		{
-			subContext.evaluationMode = EVALUATE_PARAMS;
+			subContext.evaluationMode = EVALUATE_STABLE;
 		}
 		else
 		{
-			subContext.evaluationMode = EVALUATE_FUNCTIONS_PARAMS;
+			subContext.evaluationMode = EVALUATE_VOLATILE;
 		}
 
 		return (Node *) query_tree_mutator((Query *) expression,
 										   PartiallyEvaluateExpression,
-										   masterEvaluationContext,
+										   &subContext,
 										   QTW_DONT_COPY_QUERY);
+	}
+	else if (ShouldEvaluateExpression((Expr *) expression, masterEvaluationContext))
+	{
+		return (Node *) citus_evaluate_expr((Expr *) expression,
+											exprType(expression),
+											exprTypmod(expression),
+											exprCollation(expression),
+											masterEvaluationContext);
 	}
 	else
 	{
@@ -164,35 +132,15 @@ PartiallyEvaluateExpression(Node *expression,
 
 
 /*
- * ShouldEvaluateFunctionWithMasterContext is a helper function which is used to
- * decide whether the function/expression should be evaluated with the input
- * masterEvaluationContext.
- */
-static bool
-ShouldEvaluateFunctionWithMasterContext(MasterEvaluationContext *evaluationContext)
-{
-	if (evaluationContext == NULL)
-	{
-		/* if no context provided, evaluate, which is the default behaviour */
-		return true;
-	}
-
-	return evaluationContext->evaluationMode == EVALUATE_FUNCTIONS_PARAMS;
-}
-
-
-/*
  * ShouldEvaluateExpression returns true if Citus should evaluate the
  * input node on the coordinator.
  */
 static bool
-ShouldEvaluateExpression(Expr *expression)
+ShouldEvaluateExpression(Expr *expression,
+						 MasterEvaluationContext *masterEvaluationContext)
 {
-	/* TODO take param to say howw deep to check ....
-	 * but what if nested? nullif(func())
-	 * maybe check in citus_evaluate_expr??
-	 */
 	NodeTag nodeTag = nodeTag(expression);
+	bool evaluableNodeType = false;
 
 	switch (nodeTag)
 	{
@@ -201,9 +149,32 @@ ShouldEvaluateExpression(Expr *expression)
 			FuncExpr *funcExpr = (FuncExpr *) expression;
 
 			/* we cannot evaluate set returning functions */
-			bool isSetReturningFunction = funcExpr->funcretset;
-			return !isSetReturningFunction;
+			if (funcExpr->funcretset)
+			{
+				evaluableNodeType = false;
+			}
+			else
+			{
+				evaluableNodeType = true;
+			}
+			break;
 		}
+
+		case T_Param:
+		{
+			Param *param = (Param *) expression;
+			if (param->paramkind == PARAM_SUBLINK)
+			{
+				/* ExecInitExpr cannot handle PARAM_SUBLINK */
+				evaluableNodeType = false;
+			}
+			else
+			{
+				evaluableNodeType = true;
+			}
+			break;
+		}
+
 
 		case T_OpExpr:
 		case T_DistinctExpr:
@@ -216,12 +187,45 @@ ShouldEvaluateExpression(Expr *expression)
 		case T_RelabelType:
 		case T_CoerceToDomain:
 		{
-			return true;
+			evaluableNodeType = true;
+			break;
 		}
 
 		default:
-			return false;
+		{
+			evaluableNodeType = false;
+			break;
+		}
 	}
+
+	if (!evaluableNodeType)
+	{
+		return false;
+	}
+
+	/*
+	 * The expression contains a variable expression (e.g. a stable function,
+	 * which has a column reference as its input). That means that we cannot
+	 * evaluate the expression on the coordinator, since the result depends
+	 * on the input.
+	 *
+	 * Skipping function evaluation for these expressions is safe in most
+	 * cases, since the function will always be re-evaluated for every input
+	 * value. An exception is function calls that call another stable function
+	 * that should not be re-evaluated, such as now().
+	 */
+	if (FindNodeCheck((Node *) expression, IsVariableExpression))
+	{
+		return false;
+	}
+
+	if (masterEvaluationContext->evaluationMode != EVALUATE_VOLATILE &&
+		FindNodeCheck((Node *) expression, CitusIsVolatileFunction))
+	{
+		return false;
+	}
+
+	return true;
 }
 
 
@@ -266,7 +270,7 @@ citus_evaluate_expr(Expr *expr, Oid result_type, int32 result_typmod,
 					Oid result_collation,
 					MasterEvaluationContext *masterEvaluationContext)
 {
-	PlanState *planState = NULL;
+	PlanState *planState = masterEvaluationContext->planState;
 	EState     *estate;
 	ExprState  *exprstate;
 	ExprContext *econtext;
@@ -274,28 +278,6 @@ citus_evaluate_expr(Expr *expr, Oid result_type, int32 result_typmod,
 	bool		const_is_null;
 	int16		resultTypLen;
 	bool		resultTypByVal;
-
-	if (masterEvaluationContext)
-	{
-		planState = masterEvaluationContext->planState;
-
-		if (IsA(expr, Param))
-		{
-			if (masterEvaluationContext->evaluationMode == EVALUATE_NONE)
-			{
-				/* bail out, the caller doesn't want params to be evaluated */
-				return expr;
-			}
-		}
-		else if (masterEvaluationContext->evaluationMode != EVALUATE_FUNCTIONS_PARAMS)
-		{
-			/* should only get here for node types we should evaluate */
-			Assert(ShouldEvaluateExpression(expr));
-
-			/* bail out, the caller doesn't want functions/expressions to be evaluated */
-			return expr;
-		}
-	}
 
 	/*
 	 * To use the executor, we need an EState.
@@ -468,7 +450,7 @@ CitusIsStableFunctionIdChecker(Oid func_id, void *context)
 	}
 	else
 	{
-		return (func_volatile(func_id) == PROVOLATILE_STABLE);
+		return (func_volatile(func_id) != PROVOLATILE_VOLATILE);
 	}
 }
 
@@ -489,12 +471,6 @@ CitusIsStableFunction(Node *node)
 	if (IsA(node, SQLValueFunction))
 	{
 		/* all variants of SQLValueFunction are stable */
-		return true;
-	}
-
-	if (IsA(node, NextValueExpr))
-	{
-		/* NextValueExpr is volatile */
 		return true;
 	}
 

@@ -22,14 +22,13 @@
  */
 typedef enum MasterEvaluationMode
 {
-	/* evaluate nothing */
-	EVALUATE_NONE = 0,
+	EVALUATE_INVALID = 0,
 
-	/* evaluate only external parameters */
-	EVALUATE_PARAMS,
+	/* do not evaluate volatile functions */
+	EVALUATE_STABLE,
 
-	/* evaluate both the functions/expressions and the external parameters */
-	EVALUATE_FUNCTIONS_PARAMS
+	/* evaluate volatile functions */
+	EVALUATE_VOLATILE
 } MasterEvaluationMode;
 
 /*

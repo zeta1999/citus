@@ -57,7 +57,7 @@ static void CitusBeginScan(CustomScanState *node, EState *estate, int eflags);
 static void CitusBeginSelectScan(CustomScanState *node, EState *estate, int eflags);
 static void CitusBeginModifyScan(CustomScanState *node, EState *estate, int eflags);
 static void CitusPreExecScan(CitusScanState *scanState);
-static bool ModifyJobNeedsEvaluation(Job *workerJob);
+static bool JobNeedsEvaluation(Job *workerJob);
 static void RegenerateTaskForFasthPathQuery(Job *workerJob);
 static void RegenerateTaskListForInsert(Job *workerJob);
 static DistributedPlan * CopyDistributedPlanWithoutCache(
@@ -256,7 +256,8 @@ CitusBeginSelectScan(CustomScanState *node, EState *estate, int eflags)
 	CitusScanState *scanState = (CitusScanState *) node;
 	DistributedPlan *originalDistributedPlan = scanState->distributedPlan;
 
-	if (!originalDistributedPlan->workerJob->deferredPruning)
+	if (!originalDistributedPlan->workerJob->deferredPruning &&
+		!originalDistributedPlan->workerJob->requiresMasterEvaluation)
 	{
 		/*
 		 * For SELECT queries that have already been pruned we can proceed straight
@@ -279,29 +280,37 @@ CitusBeginSelectScan(CustomScanState *node, EState *estate, int eflags)
 	Query *jobQuery = workerJob->jobQuery;
 	PlanState *planState = &(scanState->customScanState.ss.ps);
 
-	/*
-	 * We only do deferred pruning for fast path queries, which have a single
-	 * partition column value.
-	 */
-	Assert(currentPlan->fastPathRouterPlan || !EnableFastPathRouterPlanner);
+	if (JobNeedsEvaluation(workerJob))
+	{
+		/*
+		 * Evaluate parame, because the parameters are only available on the
+		 * coordinator and are required for pruning.
+		 */
+		ExecuteMasterEvaluableExpressions(jobQuery, planState);
 
-	/*
-	 * Evaluate parameters, because the parameters are only available on the
-	 * coordinator and are required for pruning.
-	 *
-	 * We don't evaluate functions for read-only queries on the coordinator
-	 * at the moment. Most function calls would be in a context where they
-	 * should be re-evaluated for every row in case of volatile functions.
-	 *
-	 * TODO: evaluate stable functions
-	 */
-	ExecuteMasterEvaluableExpressions(jobQuery, planState);
+		workerJob->parametersInJobQueryResolved = true;
+	}
 
-	/* job query no longer has parameters, so we should not send any */
-	workerJob->parametersInJobQueryResolved = true;
+	if (workerJob->deferredPruning)
+	{
+		/*
+		 * We only do deferred pruning for fast path queries, which have a single
+		 * partition column value.
+		 */
+		Assert(currentPlan->fastPathRouterPlan || !EnableFastPathRouterPlanner);
 
-	/* parameters are filled in, so we can generate a task for this execution */
-	RegenerateTaskForFasthPathQuery(workerJob);
+
+		/* parameters are filled in, so we can generate a task for this execution */
+		RegenerateTaskForFasthPathQuery(workerJob);
+	}
+	else if (workerJob->requiresMasterEvaluation)
+	{
+		/*
+		 * When there is no deferred pruning, but we did evaluate functions, then
+		 * we only rebuild the query strings in the existing tasks.
+		 */
+		RebuildQueryStrings(workerJob);
+	}
 
 	if (IsLocalPlanCachingSupported(workerJob, originalDistributedPlan))
 	{
@@ -343,9 +352,8 @@ CitusBeginModifyScan(CustomScanState *node, EState *estate, int eflags)
 	Job *workerJob = currentPlan->workerJob;
 	Query *jobQuery = workerJob->jobQuery;
 
-	if (ModifyJobNeedsEvaluation(workerJob))
+	if (JobNeedsEvaluation(workerJob))
 	{
-		/* evaluate both functions and parameters */
 		ExecuteMasterEvaluableExpressions(jobQuery, planState);
 
 		/* job query no longer has parameters, so we should not send any */
@@ -421,11 +429,11 @@ CitusBeginModifyScan(CustomScanState *node, EState *estate, int eflags)
 
 
 /*
- * ModifyJobNeedsEvaluation checks whether the functions and parameters in the job query
+ * JobNeedsEvaluation checks whether the functions and parameters in the job query
  * need to be evaluated before we can build task query strings.
  */
 static bool
-ModifyJobNeedsEvaluation(Job *workerJob)
+JobNeedsEvaluation(Job *workerJob)
 {
 	if (workerJob->requiresMasterEvaluation)
 	{

@@ -35,7 +35,7 @@ INSERT INTO master_evaluation_table SELECT i, i FROM generate_series(0,100)i;
 -- we expect that the function is evaluated on the worker node, so we should get a row
 SELECT get_local_node_id_volatile() > 0 FROM master_evaluation_table WHERE key = 1;
 
--- make sure that it is also true for  fast-path router queries with paramaters
+-- make sure that it is also true for fast-path router queries with paramaters
 PREPARE fast_path_router_with_param(int) AS SELECT get_local_node_id_volatile() > 0 FROM master_evaluation_table WHERE key  = $1;
 
 execute fast_path_router_with_param(1);

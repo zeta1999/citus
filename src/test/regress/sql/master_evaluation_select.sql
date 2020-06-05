@@ -27,6 +27,16 @@ BEGIN
 END; $$ language plpgsql VOLATILE;
 SELECT create_distributed_function('get_local_node_id_volatile()');
 
+-- create a stable function that returns the local node id
+CREATE OR REPLACE FUNCTION get_local_node_id_stable()
+RETURNS INT AS $$
+DECLARE localGroupId int;
+BEGIN
+	SELECT groupid INTO localGroupId FROM pg_dist_local_group;
+  RETURN localGroupId;
+END; $$ language plpgsql STABLE;
+SELECT create_distributed_function('get_local_node_id_stable()');
+
 CREATE TYPE user_data AS (name text, age int);
 
 SET citus.replication_model TO streaming;
@@ -44,8 +54,10 @@ INSERT INTO user_info_data SELECT i, ('name' || i, i % 20 + 20)::user_data, i FR
 -- we expect that the function is evaluated on the worker node, so we should get a row
 SELECT get_local_node_id_volatile() > 0 FROM user_info_data WHERE user_id = 1;
 
+-- whereas we expect stable functions to be evaluated on the master node
+SELECT get_local_node_id_stable() > 0 FROM user_info_data WHERE user_id = 1;
 
--- make sure that it is also true for  fast-path router queries with paramaters
+-- make sure that it is also true for fast-path router queries with paramaters
 PREPARE fast_path_router_with_param(int) AS SELECT count(*) FROM user_info_data WHERE user_id  = $1;
 
 execute fast_path_router_with_param(1);

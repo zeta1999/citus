@@ -1421,7 +1421,7 @@ CreateJob(Query *query)
 	job->taskList = NIL;
 	job->dependentJobList = NIL;
 	job->subqueryPushdown = false;
-	job->requiresMasterEvaluation = false;
+	job->requiresMasterEvaluation = RequiresMasterEvaluation(query);
 	job->deferredPruning = false;
 
 	return job;

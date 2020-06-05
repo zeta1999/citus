@@ -34,6 +34,7 @@
 #include "commands/sequence.h"
 #include "distributed/backend_data.h"
 #include "distributed/listutils.h"
+#include "distributed/citus_clauses.h"
 #include "distributed/citus_nodefuncs.h"
 #include "distributed/citus_nodes.h"
 #include "distributed/citus_ruleutils.h"
@@ -2022,7 +2023,7 @@ BuildJob(Query *jobQuery, List *dependentJobList)
 	job->jobId = UniqueJobId();
 	job->jobQuery = jobQuery;
 	job->dependentJobList = dependentJobList;
-	job->requiresMasterEvaluation = false;
+	job->requiresMasterEvaluation = RequiresMasterEvaluation(jobQuery);
 
 	return job;
 }
