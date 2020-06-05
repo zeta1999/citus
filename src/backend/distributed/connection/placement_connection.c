@@ -627,6 +627,15 @@ FindPlacementListConnection(int flags, List *placementAccessList, const char *us
 				foundModifyingConnection = true;
 			}
 		}
+		else if (placementConnection->hadDDL || placementConnection->hadDML)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
+					 errmsg("cannot perform query because modifications were "
+							"made over a connection that cannot be used at "
+							"this time, probably because a different user was "
+							"used before")));
+		}
 	}
 
 	return chosenConnection;
