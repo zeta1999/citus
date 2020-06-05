@@ -1119,7 +1119,6 @@ CoordinatedRemoteTransactionsSavepointRollback(SubTransactionId subId)
 		}
 
 		FinishRemoteTransactionSavepointRollback(connection, subId);
-		UnclaimConnection(connection);
 	}
 }
 
