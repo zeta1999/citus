@@ -415,6 +415,7 @@ push(@pgOptions, '-c', "citus.sort_returning=on");
 push(@pgOptions, '-c', "citus.task_tracker_delay=10ms");
 push(@pgOptions, '-c', "citus.remote_task_check_interval=1ms");
 push(@pgOptions, '-c', "citus.shard_replication_factor=2");
+push(@pgOptions, '-c', "statement_timeout=30s");
 push(@pgOptions, '-c', "citus.node_connection_timeout=${connectionTimeout}");
 
 # we disable slow start by default to encourage parallelism within tests
