@@ -221,7 +221,13 @@ BuildSelectStatementViaStdPlanner(Query *masterQuery, List *masterTargetList,
 	 */
 	remoteScan->custom_scan_tlist = copyObject(masterTargetList);
 	if (InsertSelectIntoLocalTable(masterQuery))
-		((Var *)((TargetEntry *)lfirst(remoteScan->custom_scan_tlist->head))->expr)->varno = 3;
+	{
+		TargetEntry * te = NULL;
+		foreach_ptr(te, remoteScan->custom_scan_tlist)
+		{
+			((Var *)(te->expr))->varno = 3;
+		}
+	}
 	remoteScan->scan.plan.targetlist = copyObject(masterTargetList);
 
 	/*

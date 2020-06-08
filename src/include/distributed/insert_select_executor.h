@@ -23,6 +23,8 @@ extern bool ExecutingInsertSelect(void);
 extern Query * BuildSelectForInsertSelect(Query *insertSelectQuery);
 extern bool IsSupportedRedistributionTarget(Oid targetRelationId);
 extern bool IsRedistributablePlan(Plan *selectPlan);
+extern List * AddInsertSelectCasts(List *insertTargetList, List *selectTargetList, Oid targetRelationId);
+extern void RelableTargetEntryList(List *selectTargetList, List *insertTargetList);
 
 
 #endif /* INSERT_SELECT_EXECUTOR_H */

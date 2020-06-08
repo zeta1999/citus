@@ -17,7 +17,9 @@
 #include "distributed/citus_ruleutils.h"
 #include "distributed/colocation_utils.h"
 #include "distributed/errormessage.h"
+#include "distributed/listutils.h"
 #include "distributed/log_utils.h"
+#include "distributed/insert_select_executor.h"
 #include "distributed/insert_select_planner.h"
 #include "distributed/metadata_cache.h"
 #include "distributed/multi_executor.h"
@@ -309,13 +311,73 @@ CreateDistributedInsertSelectPlan(Query *originalQuery,
 DistributedPlan *
 CreateInsertSelectIntoLocalTablePlan(uint64 planId, Query *originalQuery, PlannerRestrictionContext *plannerRestrictionContext)
 {
-	Query * selectQuery = ((RangeTblEntry *)lsecond(originalQuery->rtable))->subquery;
+	RangeTblEntry *selectRte = ExtractSelectRangeTableEntry(originalQuery);
+	//RangeTblEntry *insertRte = ExtractResultRelationRTE(originalQuery);
+	//Oid targetRelationId = insertRte->relid;
+	Query * selectQuery = selectRte->subquery;
+	DistributedPlan * distPlan = NULL;
 
-	MultiTreeRoot *logicalPlan = MultiLogicalPlanCreate(selectQuery, selectQuery, plannerRestrictionContext);
-	MultiLogicalPlanOptimize(logicalPlan);
-	DistributedPlan * distPlan = CreatePhysicalDistributedPlan(logicalPlan, plannerRestrictionContext);
+	distPlan = CreateRouterPlan(selectQuery, selectQuery, plannerRestrictionContext);
+	if (distPlan->planningError == NULL)
+	{
+		//selectRte->subquery = distPlan -> workerJob -> jobQuery;
+		List * tableIdList = list_make1(makeInteger(1));
+		Job * dependentJob = distPlan -> workerJob;
+		List *dependentTargetList = dependentJob->jobQuery->targetList;
 
-	((RangeTblEntry *)lsecond(originalQuery->rtable))->subquery = distPlan->masterQuery;
+		/* compute column names for the derived table */
+		uint32 columnCount = (uint32) list_length(dependentTargetList);
+		List *columnNameList = DerivedColumnNameList(columnCount,
+														dependentJob->jobId);
+
+		List *funcColumnNames = NIL;
+		List *funcColumnTypes = NIL;
+		List *funcColumnTypeMods = NIL;
+		List *funcCollations = NIL;
+
+		TargetEntry *targetEntry = NULL;
+		foreach_ptr(targetEntry, dependentTargetList)
+		{
+			Node *expr = (Node *) targetEntry->expr;
+
+			char *name = targetEntry->resname;
+			if (name == NULL)
+			{
+				name = pstrdup("unnamed");
+			}
+
+			funcColumnNames = lappend(funcColumnNames, makeString(name));
+
+			funcColumnTypes = lappend_oid(funcColumnTypes, exprType(expr));
+			funcColumnTypeMods = lappend_int(funcColumnTypeMods, exprTypmod(expr));
+			funcCollations = lappend_oid(funcCollations, exprCollation(expr));
+		}
+
+		RangeTblEntry *rangeTableEntry = DerivedRangeTableEntry(NULL,
+																columnNameList,
+																tableIdList,
+																funcColumnNames,
+																funcColumnTypes,
+																funcColumnTypeMods,
+																funcCollations);
+		
+		Query *mQ = makeNode(Query);
+		mQ->commandType = CMD_SELECT;
+		mQ->querySource = QSRC_ORIGINAL;
+		mQ->canSetTag = true;
+		mQ->rtable = list_make1(rangeTableEntry);
+		mQ->targetList = dependentTargetList;
+		mQ->jointree = dependentJob->jobQuery->jointree;
+		distPlan -> masterQuery = mQ;
+	}
+	else
+	{
+		MultiTreeRoot *logicalPlan = MultiLogicalPlanCreate(selectQuery, selectQuery, plannerRestrictionContext);
+		MultiLogicalPlanOptimize(logicalPlan);
+		distPlan = CreatePhysicalDistributedPlan(logicalPlan, plannerRestrictionContext);
+	}
+
+	selectRte->subquery = distPlan->masterQuery;
 	distPlan->masterQuery = originalQuery;
 
 	return distPlan;

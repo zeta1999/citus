@@ -71,8 +71,6 @@ static HTAB * ExecutePlanIntoColocatedIntermediateResults(Oid targetRelationId,
 static List * BuildColumnNameListFromTargetList(Oid targetRelationId,
 												List *insertTargetList);
 static int PartitionColumnIndexFromColumnList(Oid relationId, List *columnNameList);
-static List * AddInsertSelectCasts(List *insertTargetList, List *selectTargetList,
-								   Oid targetRelationId);
 static List * RedistributedInsertSelectTaskList(Query *insertSelectQuery,
 												CitusTableCacheEntry *targetRelation,
 												List **redistributedResults,
@@ -81,7 +79,6 @@ static int PartitionColumnIndex(List *insertTargetList, Var *partitionColumn);
 static Expr * CastExpr(Expr *expr, Oid sourceType, Oid targetType, Oid targetCollation,
 					   int targetTypeMod);
 static void WrapTaskListForProjection(List *taskList, List *projectedTargetEntries);
-static void RelableTargetEntryList(List *selectTargetList, List *insertTargetList);
 
 
 /*
@@ -721,7 +718,7 @@ ExecutingInsertSelect(void)
  *
  * It returns the updated selectTargetList.
  */
-static List *
+List *
 AddInsertSelectCasts(List *insertTargetList, List *selectTargetList,
 					 Oid targetRelationId)
 {
@@ -1143,7 +1140,7 @@ WrapTaskListForProjection(List *taskList, List *projectedTargetEntries)
  * RelableTargetEntryList relabels select target list to have matching names with
  * insert target list.
  */
-static void
+void
 RelableTargetEntryList(List *selectTargetList, List *insertTargetList)
 {
 	ListCell *selectTargetCell = NULL;
