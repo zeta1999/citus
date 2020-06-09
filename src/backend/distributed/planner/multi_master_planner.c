@@ -192,6 +192,11 @@ CitusCustomScanPathPlan(PlannerInfo *root,
 	 */
 	citusPath->remoteScan->scan.plan.targetlist = tlist;
 
+	if (tlist != NULL)
+	{
+		citusPath->remoteScan->custom_scan_tlist = tlist;
+	}
+
 	/* clauses might have been added by the planner, need to add them to our scan */
 	RestrictInfo *restrictInfo = NULL;
 	List **quals = &citusPath->remoteScan->scan.plan.qual;
@@ -220,14 +225,6 @@ BuildSelectStatementViaStdPlanner(Query *masterQuery, List *masterTargetList,
 	 * citus_extradata_container function call in the masterQuery).
 	 */
 	remoteScan->custom_scan_tlist = copyObject(masterTargetList);
-	if (InsertSelectIntoLocalTable(masterQuery))
-	{
-		TargetEntry * te = NULL;
-		foreach_ptr(te, remoteScan->custom_scan_tlist)
-		{
-			((Var *)(te->expr))->varno = 3;
-		}
-	}
 	remoteScan->scan.plan.targetlist = copyObject(masterTargetList);
 
 	/*
