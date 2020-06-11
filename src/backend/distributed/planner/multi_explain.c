@@ -221,13 +221,6 @@ NonPushableInsertSelectExplainScan(CustomScanState *node, List *ancestors,
 
 	bool repartition = distributedPlan->insertSelectMethod == INSERT_SELECT_REPARTITION;
 
-	if (es->analyze)
-	{
-		ereport(ERROR, (errmsg("EXPLAIN ANALYZE is currently not supported for INSERT "
-							   "... SELECT commands %s",
-							   repartition ? "with repartitioning" : "via coordinator")));
-	}
-
 	if (repartition)
 	{
 		ExplainPropertyText("INSERT/SELECT method", "repartition", es);

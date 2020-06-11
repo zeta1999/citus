@@ -574,10 +574,26 @@ EXPLAIN INSERT INTO target_table SELECT a, max(b) FROM source_table GROUP BY a;
 (10 rows)
 
 --
--- EXPLAIN ANALYZE is currently not supported
+-- EXPLAIN ANALYZE is supported
 --
-EXPLAIN ANALYZE INSERT INTO target_table SELECT a, max(b) FROM source_table GROUP BY a;
-ERROR:  EXPLAIN ANALYZE is currently not supported for INSERT ... SELECT commands with repartitioning
+EXPLAIN (ANALYZE ON, COSTS OFF, SUMMARY OFF, TIMING OFF)
+INSERT INTO target_table SELECT a, max(b) FROM source_table GROUP BY a;
+                                          QUERY PLAN
+---------------------------------------------------------------------
+ Custom Scan (Citus INSERT ... SELECT) (actual rows=0 loops=1)
+   INSERT/SELECT method: repartition
+   ->  Custom Scan (Citus Adaptive) (actual rows=6 loops=1)
+         Task Count: 4
+         Tuple data received from nodes: 21 bytes
+         Tasks Shown: One of 4
+         ->  Task
+               Tuple data received from node: 7 bytes
+               Node: host=localhost port=xxxxx dbname=regression
+               ->  HashAggregate (actual rows=2 loops=1)
+                     Group Key: a
+                     ->  Seq Scan on source_table_4213606 source_table (actual rows=5 loops=1)
+(12 rows)
+
 --
 -- Duplicate names in target list
 --
