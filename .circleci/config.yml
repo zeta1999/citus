@@ -61,94 +61,7 @@ jobs:
       - run:
           name: 'Check Snapshots'
           command: "./configure && make check-sql-snapshots -C src/backend/distributed"
-  test-11_check-multi:
-    docker:
-      - image: 'citus/exttester-11:latest'
-    working_directory: /home/circleci/project
-    steps:
-      - attach_workspace:
-          at: .
-      - run:
-          name: 'Install and Test (check-multi)'
-          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
-          no_output_timeout: 2m
-      - codecov/upload:
-          flags: 'test_11,multi'
-
-  test-11_check-tt-van-mx:
-    docker:
-      - image: 'citus/exttester-11:latest'
-    working_directory: /home/circleci/project
-    steps:
-      - attach_workspace:
-          at: .
-      - run:
-          name: 'Install and Test (check-tt-van-mx)'
-          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi-task-tracker-extra check-vanilla check-multi-mx'
-          no_output_timeout: 2m
-      - codecov/upload:
-          flags: 'test_11,tracker,vanilla,mx'
-  test-11_check-iso-work-fol:
-    docker:
-      - image: 'citus/exttester-11:latest'
-    working_directory: /home/circleci/project
-    steps:
-      - attach_workspace:
-          at: .
-      - run:
-          name: 'Install and Test (check-iso-work-fol)'
-          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-isolation check-worker'
-          no_output_timeout: 2m
-      - codecov/upload:
-          flags: 'test_11,isolation,worker'
-  test-11_check-fol:
-    docker:
-      - image: 'citus/exttester-11:latest'
-    working_directory: /home/circleci/project
-    steps:
-      - attach_workspace:
-          at: .
-      - run:
-          name: 'Enable core dumps'
-          command: 'ulimit -c unlimited'
-      - run:
-          name: 'Install and Test (fol)'
-          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-follower-cluster'
-          no_output_timeout: 2m
-      - run:
-          command: |
-            mkdir -p /tmp/core_dumps
-            cp core.* /tmp/core_dumps
-          when: on_fail
-      - codecov/upload:
-          flags: 'test_11,follower'
-      - store_artifacts:
-          path: '/tmp/core_dumps'
-  test-11_check-failure:
-    docker:
-      - image: 'citus/failtester-11:latest'
-    working_directory: /home/circleci/project
-    steps:
-      - attach_workspace:
-          at: .
-      - run:
-          name: 'Install and Test (check-failure)'
-          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-failure'
-          no_output_timeout: 2m
-
-  test-11-12_check-pg-upgrade:
-    docker:
-      - image: 'citus/pgupgradetester:latest'
-    working_directory: /home/circleci/project
-    steps:
-      - attach_workspace:
-          at: .
-      - run:
-          name: 'Install and test postgres upgrade'
-          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext --target check-pg-upgrade --old-pg-version 11 --new-pg-version 12'
-          no_output_timeout: 2m
-
-  test-12_check-multi:
+  multi1:
     docker:
       - image: 'citus/exttester-12:latest'
     working_directory: /home/circleci/project
@@ -161,7 +74,7 @@ jobs:
           no_output_timeout: 2m
       - codecov/upload:
           flags: 'test_12,multi'
-  test-12_check-tt-van-mx:
+  multi2:
     docker:
       - image: 'citus/exttester-12:latest'
     working_directory: /home/circleci/project
@@ -169,25 +82,12 @@ jobs:
       - attach_workspace:
           at: .
       - run:
-          name: 'Install and Test (check-tt-van-mx)'
-          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi-task-tracker-extra check-vanilla check-multi-mx'
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
           no_output_timeout: 2m
       - codecov/upload:
-          flags: 'test_12,tracker,vanilla,mx'
-  test-12_check-iso-work-fol:
-    docker:
-      - image: 'citus/exttester-12:latest'
-    working_directory: /home/circleci/project
-    steps:
-      - attach_workspace:
-           at: .
-      - run:
-          name: 'Install and Test (check-iso-work-fol)'
-          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-isolation check-worker'
-          no_output_timeout: 2m
-      - codecov/upload:
-          flags: 'test_12,isolation,worker'
-  test-12_check-fol:
+          flags: 'test_12,multi'
+  multi3:
     docker:
       - image: 'citus/exttester-12:latest'
     working_directory: /home/circleci/project
@@ -195,140 +95,294 @@ jobs:
       - attach_workspace:
           at: .
       - run:
-          name: 'Enable core dumps'
-          command: 'ulimit -c unlimited'
-      - run:
-          name: 'Install and Test (fol)'
-          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-follower-cluster'
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
           no_output_timeout: 2m
-      - run:
-          command: |
-            mkdir -p /tmp/core_dumps
-            cp core.* /tmp/core_dumps
-          when: on_fail
       - codecov/upload:
-          flags: 'test_12,follower'
-      - store_artifacts:
-          path: '/tmp/core_dumps'
+          flags: 'test_12,multi'
 
-  test-12_check-failure:
+  multi20:
     docker:
-      - image: 'citus/failtester-12:latest'
+      - image: 'citus/exttester-12:latest'
     working_directory: /home/circleci/project
     steps:
       - attach_workspace:
           at: .
       - run:
-          name: 'Install and Test (check-failure)'
-          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-failure'
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
           no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
 
-  test-11_check-citus-upgrade:
+  multi19:
     docker:
-      - image: 'citus/citusupgradetester-11:latest'
+      - image: 'citus/exttester-12:latest'
     working_directory: /home/circleci/project
     steps:
-      - {attach_workspace: {at: .}}
+      - attach_workspace:
+          at: .
       - run:
-          name: 'Install and test citus upgrade'
-          command: |
-           chown -R circleci:circleci /home/circleci
-           install-and-test-ext --target check-citus-upgrade --citus-pre-tar /install-pg11-citusv8.0.0.tar
-           install-and-test-ext --target check-citus-upgrade --citus-pre-tar /install-pg11-citusv8.1.0.tar
-           install-and-test-ext --target check-citus-upgrade --citus-pre-tar /install-pg11-citusv8.2.0.tar
-           install-and-test-ext --target check-citus-upgrade --citus-pre-tar /install-pg11-citusv8.3.0.tar
-
-           install-and-test-ext --target check-citus-upgrade-mixed --citus-pre-tar /install-pg11-citusv8.0.0.tar
-           install-and-test-ext --target check-citus-upgrade-mixed --citus-pre-tar /install-pg11-citusv8.1.0.tar
-           install-and-test-ext --target check-citus-upgrade-mixed --citus-pre-tar /install-pg11-citusv8.2.0.tar
-           install-and-test-ext --target check-citus-upgrade-mixed --citus-pre-tar /install-pg11-citusv8.3.0.tar
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
           no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
 
-  check-merge-to-enterprise:
+  multi18:
     docker:
-      - image: buildpack-deps:stretch
+      - image: 'citus/exttester-12:latest'
     working_directory: /home/circleci/project
     steps:
-      - checkout
+      - attach_workspace:
+          at: .
       - run:
-          command: |
-            ./src/test/scripts/check_enterprise_merge.sh
-  ch_benchmark:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi17:
     docker:
-      - image: buildpack-deps:stretch
+      - image: 'citus/exttester-12:latest'
     working_directory: /home/circleci/project
     steps:
-      - checkout
-      - azure-cli/install
-      - azure-cli/login-with-service-principal
+      - attach_workspace:
+          at: .
       - run:
-          command: |
-            cd ./src/test/hammerdb
-            sh run_hammerdb.sh citusbot_ch_benchmark_rg
-          name: install dependencies and run ch_benchmark tests
-          no_output_timeout: 20m
-  tpcc_benchmark:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi16:
     docker:
-      - image: buildpack-deps:stretch
+      - image: 'citus/exttester-12:latest'
     working_directory: /home/circleci/project
     steps:
-      - checkout
-      - azure-cli/install
-      - azure-cli/login-with-service-principal
+      - attach_workspace:
+          at: .
       - run:
-          command: |
-            cd ./src/test/hammerdb
-            sh run_hammerdb.sh citusbot_tpcc_benchmark_rg
-          name: install dependencies and run ch_benchmark tests
-          no_output_timeout: 20m
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi15:
+    docker:
+      - image: 'citus/exttester-12:latest'
+    working_directory: /home/circleci/project
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi14:
+    docker:
+      - image: 'citus/exttester-12:latest'
+    working_directory: /home/circleci/project
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi13:
+    docker:
+      - image: 'citus/exttester-12:latest'
+    working_directory: /home/circleci/project
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi12:
+    docker:
+      - image: 'citus/exttester-12:latest'
+    working_directory: /home/circleci/project
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi11:
+    docker:
+      - image: 'citus/exttester-12:latest'
+    working_directory: /home/circleci/project
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi10:
+    docker:
+      - image: 'citus/exttester-12:latest'
+    working_directory: /home/circleci/project
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi9:
+    docker:
+      - image: 'citus/exttester-12:latest'
+    working_directory: /home/circleci/project
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi8:
+    docker:
+      - image: 'citus/exttester-12:latest'
+    working_directory: /home/circleci/project
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi7:
+    docker:
+      - image: 'citus/exttester-12:latest'
+    working_directory: /home/circleci/project
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi6:
+    docker:
+      - image: 'citus/exttester-12:latest'
+    working_directory: /home/circleci/project
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi5:
+    docker:
+      - image: 'citus/exttester-12:latest'
+    working_directory: /home/circleci/project
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
+
+  multi4:
+    docker:
+      - image: 'citus/exttester-12:latest'
+    working_directory: /home/circleci/project
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi'
 
 
 workflows:
   version: 2
   build_and_test:
     jobs:
-      - check-merge-to-enterprise
       - build
-      - check-style
-      - check-sql-snapshots
 
-      - test-11_check-multi:
+      - multi1:
           requires: [build]
-      - test-11_check-tt-van-mx:
+      - multi20:
           requires: [build]
-      - test-11_check-iso-work-fol:
+      - multi19:
           requires: [build]
-      - test-11_check-fol:
+      - multi18:
           requires: [build]
-      - test-11_check-failure:
+      - multi17:
           requires: [build]
-
-      - test-12_check-multi:
+      - multi16:
           requires: [build]
-      - test-12_check-tt-van-mx:
+      - multi15:
           requires: [build]
-      - test-12_check-iso-work-fol:
+      - multi14:
           requires: [build]
-      - test-12_check-fol:
+      - multi13:
           requires: [build]
-      - test-12_check-failure:
+      - multi12:
           requires: [build]
-
-      - test-11-12_check-pg-upgrade:
+      - multi11:
           requires: [build]
-
-      - test-11_check-citus-upgrade:
+      - multi10:
           requires: [build]
-
-      - ch_benchmark:
+      - multi9:
           requires: [build]
-          filters:
-            branches:
-              only:
-                - /ch_benchmark\/.*/ # match with ch_benchmark/ prefix
-      - tpcc_benchmark:
+      - multi8:
           requires: [build]
-          filters:
-            branches:
-              only:
-                - /tpcc_benchmark\/.*/ # match with tpcc_benchmark/ prefix
+      - multi7:
+          requires: [build]
+      - multi6:
+          requires: [build]
+      - multi5:
+          requires: [build]
+      - multi4:
+          requires: [build]
+      - multi3:
+          requires: [build]
+      - multi2:
+          requires: [build]
