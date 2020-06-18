@@ -95,6 +95,17 @@ typedef struct CitusTableCacheEntrySlot
 
 
 /*
+ * ShardIdRelationIdCacheSlot is entry type for DistShardCacheHash,
+ * mapping which logical relation oid a shard belongs to.
+ */
+typedef struct ShardIdRelationIdCacheSlot
+{
+	uint64 shardId;
+	Oid relationId;
+} ShardIdRelationIdCacheSlot;
+
+
+/*
  * ShardIdIndexSlot is entry type for CitusTableCacheEntry's ShardIdIndexHash.
  */
 typedef struct ShardIdIndexSlot
@@ -166,7 +177,10 @@ static bool citusVersionKnownCompatible = false;
 static HTAB *DistTableCacheHash = NULL;
 static List *DistTableCacheExpired = NIL;
 
-/* Hash table for informations about each shard */
+/* Hash table for looking up shard's distribution oid */
+static HTAB *ShardIdRelationIdCacheHash = NULL;
+
+/* Memory context for hash cached data */
 static MemoryContext MetadataCacheMemoryContext = NULL;
 
 /* Hash table for information about each object */
@@ -212,6 +226,7 @@ static void RegisterCitusTableCacheEntryReleaseCallbacks(void);
 static uint32 WorkerNodeHashCode(const void *key, Size keySize);
 static void ResetCitusTableCacheEntry(CitusTableCacheEntry *cacheEntry);
 static void CreateDistTableCache(void);
+static void CreateShardIdRelationIdCache(void);
 static void CreateDistObjectCache(void);
 static void InvalidateForeignRelationGraphCacheCallback(Datum argument, Oid relationId);
 static void InvalidateDistRelationCacheCallback(Datum argument, Oid relationId);
@@ -237,6 +252,7 @@ static ShardPlacement * ResolveGroupShardPlacement(
 static Oid LookupEnumValueId(Oid typeId, char *valueName);
 static void InvalidateDistTableCache(void);
 static void InvalidateDistObjectCache(void);
+static void InvalidateShardIdRelationIdCache(void);
 
 
 /* exports for SQL callable functions */
@@ -2601,6 +2617,12 @@ master_dist_shard_cache_invalidate(PG_FUNCTION_ARGS)
 		Form_pg_dist_shard distShard = (Form_pg_dist_shard) GETSTRUCT(oldTuple);
 
 		oldLogicalRelationId = distShard->logicalrelid;
+
+		if (newTuple == NULL)
+		{
+			hash_search(ShardIdRelationIdCacheHash, &distShard->shardid, HASH_REMOVE,
+						NULL);
+		}
 	}
 
 	if (newTuple != NULL)
@@ -2608,6 +2630,11 @@ master_dist_shard_cache_invalidate(PG_FUNCTION_ARGS)
 		Form_pg_dist_shard distShard = (Form_pg_dist_shard) GETSTRUCT(newTuple);
 
 		newLogicalRelationId = distShard->logicalrelid;
+
+		ShardIdRelationIdCacheSlot *cacheSlot =
+			hash_search(ShardIdRelationIdCacheHash, &distShard->shardid, HASH_ENTER,
+						NULL);
+		cacheSlot->relationId = newLogicalRelationId;
 	}
 
 	/*
@@ -2865,6 +2892,7 @@ InitializeCaches(void)
 			MetadataCacheMemoryContext = NULL;
 			DistTableCacheHash = NULL;
 			DistTableCacheExpired = NIL;
+			ShardIdRelationIdCacheHash = NULL;
 
 			PG_RE_THROW();
 		}
@@ -2899,6 +2927,7 @@ InitializeDistCache(void)
 	DistShardScanKey[0].sk_attno = Anum_pg_dist_shard_logicalrelid;
 
 	CreateDistTableCache();
+	CreateShardIdRelationIdCache();
 
 	InitializeDistObjectCache();
 
@@ -3378,6 +3407,7 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 	{
 		InvalidateDistTableCache();
 		InvalidateDistObjectCache();
+		InvalidateShardIdRelationIdCache();
 	}
 	else
 	{
@@ -3405,6 +3435,11 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 			InvalidateMetadataSystemCache();
 		}
 
+		if (relationId == MetadataCache.distShardRelationId)
+		{
+			InvalidateShardIdRelationIdCache();
+		}
+
 		if (relationId == MetadataCache.distObjectRelationId)
 		{
 			InvalidateDistObjectCache();
@@ -3426,9 +3461,8 @@ InvalidateDistTableCache(void)
 
 	while ((cacheSlot = (CitusTableCacheEntrySlot *) hash_seq_search(&status)) != NULL)
 	{
-		bool foundInCache = false;
 		CitusTableCacheEntrySlot *removedSlot PG_USED_FOR_ASSERTS_ONLY =
-			hash_search(DistTableCacheHash, cacheSlot, HASH_REMOVE, &foundInCache);
+			hash_search(DistTableCacheHash, cacheSlot, HASH_REMOVE, NULL);
 		Assert(removedSlot == cacheSlot);
 
 		cacheSlot->data->isValid = false;
@@ -3453,6 +3487,26 @@ InvalidateDistObjectCache(void)
 	while ((cacheEntry = (DistObjectCacheEntry *) hash_seq_search(&status)) != NULL)
 	{
 		cacheEntry->isValid = false;
+	}
+}
+
+
+/*
+ * InvalidateShardIdRelationIdCache clears ShardIdRelationIdCacheHash.
+ */
+static void
+InvalidateShardIdRelationIdCache(void)
+{
+	ShardIdRelationIdCacheSlot *cacheSlot = NULL;
+	HASH_SEQ_STATUS status;
+
+	hash_seq_init(&status, ShardIdRelationIdCacheHash);
+
+	while ((cacheSlot = (ShardIdRelationIdCacheSlot *) hash_seq_search(&status)) != NULL)
+	{
+		ShardIdRelationIdCacheSlot *removedSlot PG_USED_FOR_ASSERTS_ONLY =
+			hash_search(ShardIdRelationIdCacheHash, cacheSlot, HASH_REMOVE, NULL);
+		Assert(removedSlot == cacheSlot);
 	}
 }
 
@@ -3494,6 +3548,22 @@ CreateDistTableCache(void)
 	info.hcxt = MetadataCacheMemoryContext;
 	DistTableCacheHash =
 		hash_create("Distributed Relation Cache", 32, &info,
+					HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+}
+
+
+/* CreateShardIdRelationIdCache initializes the per-shard hash table */
+static void
+CreateShardIdRelationIdCache(void)
+{
+	HASHCTL info;
+	MemSet(&info, 0, sizeof(info));
+	info.keysize = sizeof(uint64);
+	info.entrysize = sizeof(ShardIdRelationIdCacheSlot);
+	info.hash = tag_hash;
+	info.hcxt = MetadataCacheMemoryContext;
+	ShardIdRelationIdCacheHash =
+		hash_create("Shard Relation Cache", 256, &info,
 					HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 }
 
@@ -3762,10 +3832,23 @@ LookupDistShardTuples(Oid relationId)
 Oid
 LookupShardRelation(int64 shardId, bool missingOk)
 {
+	AcceptInvalidationMessages();
+
+	Oid distShardRelationId = DistShardRelationId();
+
+	ShardIdRelationIdCacheSlot *cacheSlot =
+		hash_search(ShardIdRelationIdCacheHash, &shardId, HASH_FIND, NULL);
+	if (cacheSlot != NULL)
+	{
+		Oid relationId = cacheSlot->relationId;
+		LockRelationOid(distShardRelationId, AccessShareLock);
+		return relationId;
+	}
+
 	ScanKeyData scanKey[1];
 	int scanKeyCount = 1;
 	Form_pg_dist_shard shardForm = NULL;
-	Relation pgDistShard = heap_open(DistShardRelationId(), AccessShareLock);
+	Relation pgDistShard = heap_open(distShardRelationId, AccessShareLock);
 	Oid relationId = InvalidOid;
 
 	ScanKeyInit(&scanKey[0], Anum_pg_dist_shard_shardid,
@@ -3790,6 +3873,11 @@ LookupShardRelation(int64 shardId, bool missingOk)
 	{
 		shardForm = (Form_pg_dist_shard) GETSTRUCT(heapTuple);
 		relationId = shardForm->logicalrelid;
+
+		/* redo lookup in case invalidation message came in */
+		ShardIdRelationIdCacheSlot *newCacheSlot =
+			hash_search(ShardIdRelationIdCacheHash, &shardId, HASH_ENTER, NULL);
+		newCacheSlot->relationId = relationId;
 	}
 
 	systable_endscan(scanDescriptor);
