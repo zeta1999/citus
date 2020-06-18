@@ -361,6 +361,8 @@ LockShardDistributionMetadata(int64 shardId, LOCKMODE lockMode)
 	const bool sessionLock = false;
 	const bool dontWait = false;
 
+	RemoveRelationIdForShard(shardId);
+
 	SetLocktagForShardDistributionMetadata(shardId, &tag);
 	(void) LockAcquire(&tag, lockMode, sessionLock, dontWait);
 }

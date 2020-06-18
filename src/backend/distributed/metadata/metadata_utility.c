@@ -888,6 +888,7 @@ InsertShardRow(Oid relationId, uint64 shardId, char storageType,
 
 	/* invalidate previous cache entry and close relation */
 	CitusInvalidateRelcacheByRelid(relationId);
+	SetRelationIdForShard(shardId, relationId);
 
 	CommandCounterIncrement();
 	heap_close(pgDistShard, NoLock);
@@ -1104,6 +1105,7 @@ DeleteShardRow(uint64 shardId)
 
 	/* invalidate previous cache entry */
 	CitusInvalidateRelcacheByRelid(distributedRelationId);
+	RemoveRelationIdForShard(shardId);
 
 	CommandCounterIncrement();
 	heap_close(pgDistShard, NoLock);

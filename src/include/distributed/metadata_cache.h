@@ -129,6 +129,8 @@ extern bool IsCitusTable(Oid relationId);
 extern List * CitusTableList(void);
 extern ShardInterval * LoadShardInterval(uint64 shardId);
 extern Oid RelationIdForShard(uint64 shardId);
+extern void SetRelationIdForShard(uint64 shardId, Oid relationId);
+extern void RemoveRelationIdForShard(uint64 shardId);
 extern bool ReferenceTableShardId(uint64 shardId);
 extern ShardPlacement * FindShardPlacementOnGroup(int32 groupId, uint64 shardId);
 extern GroupShardPlacement * LoadGroupShardPlacement(uint64 shardId, uint64 placementId);

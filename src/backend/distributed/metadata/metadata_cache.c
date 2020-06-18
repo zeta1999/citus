@@ -412,6 +412,31 @@ RelationIdForShard(uint64 shardId)
 
 
 /*
+ * SetRelationIdForShard updates ShardIdRelationIdCacheHash.
+ */
+void
+SetRelationIdForShard(uint64 shardId, Oid relationId)
+{
+	ShardIdRelationIdCacheSlot *cacheSlot =
+		hash_search(ShardIdRelationIdCacheHash, &shardId, HASH_FIND, NULL);
+	if (cacheSlot != NULL)
+	{
+		cacheSlot->relationId = relationId;
+	}
+}
+
+
+/*
+ * RemoveRelationIdForShard removes a shard from ShardIdRelationIdCacheHash.
+ */
+void
+RemoveRelationIdForShard(uint64 shardId)
+{
+	hash_search(ShardIdRelationIdCacheHash, &shardId, HASH_REMOVE, NULL);
+}
+
+
+/*
  * ReferenceTableShardId returns true if the given shardId belongs to
  * a reference table.
  */
