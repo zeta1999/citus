@@ -899,6 +899,8 @@ LookupCitusTableCacheEntry(Oid relationId)
 				MemoryContext oldContext =
 					MemoryContextSwitchTo(MetadataCacheMemoryContext);
 
+				char * relname = get_rel_name(relationId);
+				ereport(WARNING, (errmsg("LookupCitusTableCacheEntry cache expired for %s", relname)));
 				DistTableCacheExpired = lappend(DistTableCacheExpired,
 												cacheSlot->citusTableMetadata);
 
@@ -3515,6 +3517,8 @@ InvalidateCitusTableCacheEntrySlot(CitusTableCacheEntrySlot *cacheSlot)
 
 	if (cacheSlot->citusTableMetadata != NULL)
 	{
+		char * relname = get_rel_name(cacheSlot->citusTableMetadata->relationId);
+		ereport(WARNING, (errmsg("InvalidateCitusTableCacheEntrySlot cache will reload for %s", relname)));
 		/* reload the metadata */
 		cacheSlot->citusTableMetadata->isValid = false;
 	}
