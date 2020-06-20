@@ -235,6 +235,8 @@ static ShardPlacement * ResolveGroupShardPlacement(
 static Oid LookupEnumValueId(Oid typeId, char *valueName);
 static void InvalidateDistTableCache(void);
 static void InvalidateDistObjectCache(void);
+static int HashSize(void);
+
 
 
 /* exports for SQL callable functions */
@@ -270,6 +272,17 @@ EnsureModificationsCanRun(void)
 	}
 }
 
+static int HashSize() {
+	HASH_SEQ_STATUS status;
+	CitusTableCacheEntry *entry;
+
+	hash_seq_init(&status, DistTableCacheHash);
+	int size = 0;
+	while ((entry = (CitusTableCacheEntry *) hash_seq_search(&status)) != 0) {
+			size++;
+	}
+	return size;
+} 
 
 /*
  * IsCitusTable returns whether relationId is a distributed relation or
@@ -3441,6 +3454,8 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 													   HASH_FIND, &foundInCache);
 		if (foundInCache)
 		{
+			int size = HashSize();
+			ereport(WARNING, (errmsg("DistTableCacheHash size is %d", size)));
 			cacheEntry->isValid = false;
 		}
 
