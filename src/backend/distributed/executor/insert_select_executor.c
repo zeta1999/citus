@@ -71,17 +71,12 @@ static HTAB * ExecutePlanIntoColocatedIntermediateResults(Oid targetRelationId,
 static List * BuildColumnNameListFromTargetList(Oid targetRelationId,
 												List *insertTargetList);
 static int PartitionColumnIndexFromColumnList(Oid relationId, List *columnNameList);
-static List * AddInsertSelectCasts(List *insertTargetList, List *selectTargetList,
-								   Oid targetRelationId);
 static List * RedistributedInsertSelectTaskList(Query *insertSelectQuery,
 												CitusTableCacheEntry *targetRelation,
 												List **redistributedResults,
 												bool useBinaryFormat);
 static int PartitionColumnIndex(List *insertTargetList, Var *partitionColumn);
-static Expr * CastExpr(Expr *expr, Oid sourceType, Oid targetType, Oid targetCollation,
-					   int targetTypeMod);
 static void WrapTaskListForProjection(List *taskList, List *projectedTargetEntries);
-static void RelableTargetEntryList(List *selectTargetList, List *insertTargetList);
 
 
 /*
@@ -125,51 +120,18 @@ CoordinatorInsertSelectExecScanInternal(CustomScanState *node)
 	if (!scanState->finishedRemoteScan)
 	{
 		EState *executorState = ScanStateGetExecutorState(scanState);
-		ParamListInfo paramListInfo = executorState->es_param_list_info;
 		DistributedPlan *distributedPlan = scanState->distributedPlan;
 		Query *insertSelectQuery = copyObject(distributedPlan->insertSelectQuery);
 		List *insertTargetList = insertSelectQuery->targetList;
-		RangeTblEntry *selectRte = ExtractSelectRangeTableEntry(insertSelectQuery);
 		RangeTblEntry *insertRte = ExtractResultRelationRTE(insertSelectQuery);
+		RangeTblEntry *selectRte = ExtractSelectRangeTableEntry(insertSelectQuery);
+		Query *selectQuery = selectRte->subquery;
 		Oid targetRelationId = insertRte->relid;
 		char *intermediateResultIdPrefix = distributedPlan->intermediateResultIdPrefix;
 		bool hasReturning = distributedPlan->expectResults;
 		HTAB *shardStateHash = NULL;
 
-		/* select query to execute */
-		Query *selectQuery = BuildSelectForInsertSelect(insertSelectQuery);
-
-		selectRte->subquery = selectQuery;
-		ReorderInsertSelectTargetLists(insertSelectQuery, insertRte, selectRte);
-
-		/*
-		 * Cast types of insert target list and select projection list to
-		 * match the column types of the target relation.
-		 */
-		selectQuery->targetList =
-			AddInsertSelectCasts(insertSelectQuery->targetList,
-								 selectQuery->targetList,
-								 targetRelationId);
-
-		/*
-		 * Later we might need to call WrapTaskListForProjection(), which requires
-		 * that select target list has unique names, otherwise the outer query
-		 * cannot select columns unambiguously. So we relabel select columns to
-		 * match target columns.
-		 */
-		RelableTargetEntryList(selectQuery->targetList, insertTargetList);
-
-		/*
-		 * Make a copy of the query, since pg_plan_query may scribble on it and we
-		 * want it to be replanned every time if it is stored in a prepared
-		 * statement.
-		 */
-		selectQuery = copyObject(selectQuery);
-
-		/* plan the subquery, this may be another distributed query */
-		int cursorOptions = CURSOR_OPT_PARALLEL_OK;
-		PlannedStmt *selectPlan = pg_plan_query(selectQuery, cursorOptions,
-												paramListInfo);
+		PlannedStmt *selectPlan = distributedPlan->insertSelectSubplan;
 
 		/*
 		 * If we are dealing with partitioned table, we also need to lock its
@@ -181,7 +143,9 @@ CoordinatorInsertSelectExecScanInternal(CustomScanState *node)
 			LockPartitionRelations(targetRelationId, RowExclusiveLock);
 		}
 
-		if (IsRedistributablePlan(selectPlan->planTree) &&
+		bool redistributablePlan = IsRedistributablePlan(selectPlan->planTree);
+
+		if (redistributablePlan &&
 			IsSupportedRedistributionTarget(targetRelationId))
 		{
 			ereport(DEBUG1, (errmsg("performing repartitioned INSERT ... SELECT")));
@@ -686,124 +650,10 @@ ExecutingInsertSelect(void)
 
 
 /*
- * AddInsertSelectCasts makes sure that the types in columns in the given
- * target lists have the same type as the columns of the given relation.
- * It might add casts to ensure that.
- *
- * It returns the updated selectTargetList.
- */
-static List *
-AddInsertSelectCasts(List *insertTargetList, List *selectTargetList,
-					 Oid targetRelationId)
-{
-	ListCell *insertEntryCell = NULL;
-	ListCell *selectEntryCell = NULL;
-	List *projectedEntries = NIL;
-	List *nonProjectedEntries = NIL;
-
-	/*
-	 * ReorderInsertSelectTargetLists() makes sure that first few columns of
-	 * the SELECT query match the insert targets. It might contain additional
-	 * items for GROUP BY, etc.
-	 */
-	Assert(list_length(insertTargetList) <= list_length(selectTargetList));
-
-	Relation distributedRelation = heap_open(targetRelationId, RowExclusiveLock);
-	TupleDesc destTupleDescriptor = RelationGetDescr(distributedRelation);
-
-	int targetEntryIndex = 0;
-	forboth(insertEntryCell, insertTargetList, selectEntryCell, selectTargetList)
-	{
-		TargetEntry *insertEntry = (TargetEntry *) lfirst(insertEntryCell);
-		TargetEntry *selectEntry = (TargetEntry *) lfirst(selectEntryCell);
-		Var *insertColumn = (Var *) insertEntry->expr;
-		Form_pg_attribute attr = TupleDescAttr(destTupleDescriptor,
-											   insertEntry->resno - 1);
-
-		Oid sourceType = insertColumn->vartype;
-		Oid targetType = attr->atttypid;
-		if (sourceType != targetType)
-		{
-			insertEntry->expr = CastExpr((Expr *) insertColumn, sourceType, targetType,
-										 attr->attcollation, attr->atttypmod);
-
-			/*
-			 * We cannot modify the selectEntry in-place, because ORDER BY or
-			 * GROUP BY clauses might be pointing to it with comparison types
-			 * of the source type. So instead we keep the original one as a
-			 * non-projected entry, so GROUP BY and ORDER BY are happy, and
-			 * create a duplicated projected entry with the coerced expression.
-			 */
-			TargetEntry *coercedEntry = copyObject(selectEntry);
-			coercedEntry->expr = CastExpr((Expr *) selectEntry->expr, sourceType,
-										  targetType, attr->attcollation,
-										  attr->atttypmod);
-			coercedEntry->ressortgroupref = 0;
-
-			/*
-			 * The only requirement is that users don't use this name in ORDER BY
-			 * or GROUP BY, and it should be unique across the same query.
-			 */
-			StringInfo resnameString = makeStringInfo();
-			appendStringInfo(resnameString, "auto_coerced_by_citus_%d", targetEntryIndex);
-			coercedEntry->resname = resnameString->data;
-
-			projectedEntries = lappend(projectedEntries, coercedEntry);
-
-			if (selectEntry->ressortgroupref != 0)
-			{
-				selectEntry->resjunk = true;
-
-				/*
-				 * This entry might still end up in the SELECT output list, so
-				 * rename it to avoid ambiguity.
-				 *
-				 * See https://github.com/citusdata/citus/pull/3470.
-				 */
-				resnameString = makeStringInfo();
-				appendStringInfo(resnameString, "discarded_target_item_%d",
-								 targetEntryIndex);
-				selectEntry->resname = resnameString->data;
-
-				nonProjectedEntries = lappend(nonProjectedEntries, selectEntry);
-			}
-		}
-		else
-		{
-			projectedEntries = lappend(projectedEntries, selectEntry);
-		}
-
-		targetEntryIndex++;
-	}
-
-	for (int entryIndex = list_length(insertTargetList);
-		 entryIndex < list_length(selectTargetList);
-		 entryIndex++)
-	{
-		nonProjectedEntries = lappend(nonProjectedEntries, list_nth(selectTargetList,
-																	entryIndex));
-	}
-
-	/* selectEntry->resno must be the ordinal number of the entry */
-	selectTargetList = list_concat(projectedEntries, nonProjectedEntries);
-	int entryResNo = 1;
-	TargetEntry *selectTargetEntry = NULL;
-	foreach_ptr(selectTargetEntry, selectTargetList)
-	{
-		selectTargetEntry->resno = entryResNo++;
-	}
-
-	heap_close(distributedRelation, NoLock);
-
-	return selectTargetList;
-}
-
-
-/*
  * CastExpr returns an expression which casts the given expr from sourceType to
  * the given targetType.
  */
-static Expr *
+Expr *
 CastExpr(Expr *expr, Oid sourceType, Oid targetType, Oid targetCollation,
 		 int targetTypeMod)
 {
@@ -1106,25 +956,5 @@ WrapTaskListForProjection(List *taskList, List *projectedTargetEntries)
 						 projectedColumnsString->data,
 						 TaskQueryStringForAllPlacements(task));
 		SetTaskQueryString(task, wrappedQuery->data);
-	}
-}
-
-
-/*
- * RelableTargetEntryList relabels select target list to have matching names with
- * insert target list.
- */
-static void
-RelableTargetEntryList(List *selectTargetList, List *insertTargetList)
-{
-	ListCell *selectTargetCell = NULL;
-	ListCell *insertTargetCell = NULL;
-
-	forboth(selectTargetCell, selectTargetList, insertTargetCell, insertTargetList)
-	{
-		TargetEntry *selectTargetEntry = lfirst(selectTargetCell);
-		TargetEntry *insertTargetEntry = lfirst(insertTargetCell);
-
-		selectTargetEntry->resname = insertTargetEntry->resname;
 	}
 }

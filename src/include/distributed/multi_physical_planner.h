@@ -418,6 +418,7 @@ typedef struct DistributedPlan
 
 	/* INSERT .. SELECT via the coordinator */
 	Query *insertSelectQuery;
+	PlannedStmt *insertSelectSubplan;
 
 	/*
 	 * If intermediateResultIdPrefix is non-null, an INSERT ... SELECT

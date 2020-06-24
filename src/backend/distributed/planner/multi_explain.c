@@ -209,21 +209,21 @@ CoordinatorInsertSelectExplainScan(CustomScanState *node, List *ancestors,
 	CitusScanState *scanState = (CitusScanState *) node;
 	DistributedPlan *distributedPlan = scanState->distributedPlan;
 	Query *insertSelectQuery = distributedPlan->insertSelectQuery;
-	Query *query = BuildSelectForInsertSelect(insertSelectQuery);
 	RangeTblEntry *insertRte = ExtractResultRelationRTE(insertSelectQuery);
+	RangeTblEntry *selectRte = ExtractSelectRangeTableEntry(insertSelectQuery);
+	Query *selectQuery = selectRte->subquery;
 	Oid targetRelationId = insertRte->relid;
 	IntoClause *into = NULL;
 	ParamListInfo params = NULL;
 	char *queryString = NULL;
-	int cursorOptions = CURSOR_OPT_PARALLEL_OK;
 
 	/*
 	 * Make a copy of the query, since pg_plan_query may scribble on it and later
 	 * stages of EXPLAIN require it.
 	 */
-	Query *queryCopy = copyObject(query);
-	PlannedStmt *selectPlan = pg_plan_query(queryCopy, cursorOptions, params);
-	bool repartition = IsRedistributablePlan(selectPlan->planTree) &&
+	PlannedStmt *selectPlan = distributedPlan->insertSelectSubplan;
+	bool redistributablePlan = IsRedistributablePlan(selectPlan->planTree);
+	bool repartition = redistributablePlan &&
 					   IsSupportedRedistributionTarget(targetRelationId);
 
 	if (es->analyze)
@@ -245,7 +245,7 @@ CoordinatorInsertSelectExplainScan(CustomScanState *node, List *ancestors,
 	ExplainOpenGroup("Select Query", "Select Query", false, es);
 
 	/* explain the inner SELECT query */
-	ExplainOneQuery(query, 0, into, es, queryString, params, NULL);
+	ExplainOneQuery(selectQuery, 0, into, es, queryString, params, NULL);
 
 	ExplainCloseGroup("Select Query", "Select Query", false, es);
 }
