@@ -900,6 +900,9 @@ LookupCitusTableCacheEntry(Oid relationId)
 				MemoryContext oldContext =
 					MemoryContextSwitchTo(MetadataCacheMemoryContext);
 
+				ereport(WARNING, (errmsg(
+									  "LookupCitusTableCacheEntry cache expired for %d",
+									  relationId)));
 				DistTableCacheExpired = lappend(DistTableCacheExpired,
 												cacheSlot->citusTableMetadata);
 
@@ -3468,6 +3471,7 @@ static void
 InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 {
 	static int totalInvalidation = 0;
+
 	/* invalidate either entire cache or a specific entry */
 	if (relationId == InvalidOid)
 	{
@@ -3484,7 +3488,10 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 		if (foundInCache)
 		{
 			int size = HashSize();
-			ereport(WARNING, (errmsg("InvalidateDistRelationCacheCallback name size: %d total: %d", size, totalInvalidation++)));
+			ereport(WARNING, (errmsg(
+								  "InvalidateDistRelationCacheCallback name size: %d total: %d",
+								  size,
+								  totalInvalidation++)));
 			InvalidateCitusTableCacheEntrySlot(cacheSlot);
 		}
 
@@ -3505,19 +3512,25 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 	}
 }
 
-static int HashSize() {
+
+static int
+HashSize()
+{
 	HASH_SEQ_STATUS status;
 	CitusTableCacheEntry *entry;
-	if (!DistTableCacheHash) {
+	if (!DistTableCacheHash)
+	{
 		return 0;
 	}
 	hash_seq_init(&status, DistTableCacheHash);
 	int size = 0;
-	while ((entry = (CitusTableCacheEntry *) hash_seq_search(&status)) != 0) {
-			size++;
+	while ((entry = (CitusTableCacheEntry *) hash_seq_search(&status)) != 0)
+	{
+		size++;
 	}
 	return size;
 }
+
 
 /*
  * InvalidateCitusTableCacheEntrySlot marks a CitusTableCacheEntrySlot as invalid,
@@ -3532,9 +3545,11 @@ InvalidateCitusTableCacheEntrySlot(CitusTableCacheEntrySlot *cacheSlot)
 
 	if (cacheSlot->citusTableMetadata != NULL)
 	{
-		ereport(WARNING, (errmsg("InvalidateCitusTableCacheEntrySlot cache will reload")));
+		ereport(WARNING, (errmsg(
+							  "InvalidateCitusTableCacheEntrySlot cache will reload for %d",
+							  cacheSlot->citusTableMetadata->relationId)));
 
-		
+
 		/* reload the metadata */
 		cacheSlot->citusTableMetadata->isValid = false;
 	}
