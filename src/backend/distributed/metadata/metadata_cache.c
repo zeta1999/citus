@@ -254,6 +254,7 @@ static Oid LookupEnumValueId(Oid typeId, char *valueName);
 static void InvalidateCitusTableCacheEntrySlot(CitusTableCacheEntrySlot *cacheSlot);
 static void InvalidateDistTableCache(void);
 static void InvalidateDistObjectCache(void);
+static int HashSize(void);
 
 
 /* exports for SQL callable functions */
@@ -899,8 +900,6 @@ LookupCitusTableCacheEntry(Oid relationId)
 				MemoryContext oldContext =
 					MemoryContextSwitchTo(MetadataCacheMemoryContext);
 
-				char * relname = get_rel_name(relationId);
-				ereport(WARNING, (errmsg("LookupCitusTableCacheEntry cache expired for %s", relname)));
 				DistTableCacheExpired = lappend(DistTableCacheExpired,
 												cacheSlot->citusTableMetadata);
 
@@ -3468,6 +3467,7 @@ InvalidateForeignKeyGraph(void)
 static void
 InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 {
+	static int totalInvalidation = 0;
 	/* invalidate either entire cache or a specific entry */
 	if (relationId == InvalidOid)
 	{
@@ -3483,6 +3483,8 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 			hash_search(DistTableCacheHash, hashKey, HASH_FIND, &foundInCache);
 		if (foundInCache)
 		{
+			int size = HashSize();
+			ereport(WARNING, (errmsg("InvalidateDistRelationCacheCallback name size: %d total: %d", size, totalInvalidation++)));
 			InvalidateCitusTableCacheEntrySlot(cacheSlot);
 		}
 
@@ -3503,6 +3505,19 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 	}
 }
 
+static int HashSize() {
+	HASH_SEQ_STATUS status;
+	CitusTableCacheEntry *entry;
+	if (!DistTableCacheHash) {
+		return 0;
+	}
+	hash_seq_init(&status, DistTableCacheHash);
+	int size = 0;
+	while ((entry = (CitusTableCacheEntry *) hash_seq_search(&status)) != 0) {
+			size++;
+	}
+	return size;
+}
 
 /*
  * InvalidateCitusTableCacheEntrySlot marks a CitusTableCacheEntrySlot as invalid,
@@ -3517,8 +3532,9 @@ InvalidateCitusTableCacheEntrySlot(CitusTableCacheEntrySlot *cacheSlot)
 
 	if (cacheSlot->citusTableMetadata != NULL)
 	{
-		char * relname = get_rel_name(cacheSlot->citusTableMetadata->relationId);
-		ereport(WARNING, (errmsg("InvalidateCitusTableCacheEntrySlot cache will reload for %s", relname)));
+		ereport(WARNING, (errmsg("InvalidateCitusTableCacheEntrySlot cache will reload")));
+
+		
 		/* reload the metadata */
 		cacheSlot->citusTableMetadata->isValid = false;
 	}
