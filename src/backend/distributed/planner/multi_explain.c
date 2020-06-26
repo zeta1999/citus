@@ -102,6 +102,26 @@ typedef struct RemoteExplainPlan
 
 
 /*
+ * Execution time instrumentation for a task.
+ */
+typedef struct ExplainAnalyzePrivate
+{
+	/*
+	 * totalReceivedTupleData only counts the data for a single placement. So
+	 * for RETURNING DML this is not really correct. This is used by
+	 * EXPLAIN ANALYZE, to display the amount of received bytes.
+	 */
+	uint64 totalReceivedTupleData;
+
+	/*
+	 * EXPLAIN ANALYZE output fetched from worker. This is saved to be used later
+	 * by RemoteExplain().
+	 */
+	char *fetchedExplainAnalyzePlan;
+	int fetchedExplainAnalyzePlacementIndex;
+} ExplainAnalyzePrivate;
+
+/*
  * ExplainAnalyzeDestination is internal representation of a TupleDestination
  * which collects EXPLAIN ANALYZE output after the main query is run.
  */
@@ -433,11 +453,15 @@ ExplainJob(CitusScanState *scanState, Job *job, ExplainState *es)
 static uint64
 TaskReceivedTupleData(Task *task)
 {
+	ExplainAnalyzePrivate *explainAnlyzeData = task->explainAnalyzePrivate;
+
 	if (task->taskType == MODIFY_TASK)
 	{
-		return task->totalReceivedTupleData * list_length(task->taskPlacementList);
+		int placementCount = list_length(task->taskPlacementList);
+		return explainAnlyzeData->totalReceivedTupleData * placementCount;
 	}
-	return task->totalReceivedTupleData;
+
+	return explainAnlyzeData->totalReceivedTupleData;
 }
 
 
@@ -538,11 +562,15 @@ ExplainTaskList(CitusScanState *scanState, List *taskList, ExplainState *es)
 static RemoteExplainPlan *
 RemoteExplain(Task *task, ExplainState *es)
 {
+	ExplainAnalyzePrivate *explainAnalyzeData = task->explainAnalyzePrivate;
+
 	/*
 	 * For EXPLAIN EXECUTE we still use the old method, so task->fetchedExplainAnalyzePlan
 	 * can be NULL for some cases of es->analyze == true.
 	 */
-	if (es->analyze && task->fetchedExplainAnalyzePlan)
+	if (es->analyze &&
+		explainAnalyzeData != NULL &&
+		explainAnalyzeData->fetchedExplainAnalyzePlan != NULL)
 	{
 		return GetSavedRemoteExplain(task, es);
 	}
@@ -562,6 +590,7 @@ GetSavedRemoteExplain(Task *task, ExplainState *es)
 {
 	RemoteExplainPlan *remotePlan = (RemoteExplainPlan *) palloc0(
 		sizeof(RemoteExplainPlan));
+	ExplainAnalyzePrivate *explainAnalyzeData = task->explainAnalyzePrivate;
 
 	/*
 	 * Similar to postgres' ExplainQuery(), we split by newline only for
@@ -569,17 +598,19 @@ GetSavedRemoteExplain(Task *task, ExplainState *es)
 	 */
 	if (es->format == EXPLAIN_FORMAT_TEXT)
 	{
-		remotePlan->explainOutputList = SplitString(task->fetchedExplainAnalyzePlan,
-													'\n');
+		remotePlan->explainOutputList = SplitString(
+			explainAnalyzeData->fetchedExplainAnalyzePlan,
+			'\n');
 	}
 	else
 	{
 		StringInfo explainAnalyzeString = makeStringInfo();
-		appendStringInfoString(explainAnalyzeString, task->fetchedExplainAnalyzePlan);
+		appendStringInfoString(explainAnalyzeString,
+							   explainAnalyzeData->fetchedExplainAnalyzePlan);
 		remotePlan->explainOutputList = list_make1(explainAnalyzeString);
 	}
 
-	remotePlan->placementIndex = task->fetchedExplainAnalyzePlacementIndex;
+	remotePlan->placementIndex = explainAnalyzeData->fetchedExplainAnalyzePlacementIndex;
 
 	return remotePlan;
 }
@@ -1165,12 +1196,15 @@ ExplainAnalyzeDestPutTuple(TupleDestination *self, Task *task,
 						   HeapTuple heapTuple, uint64 tupleLibpqSize)
 {
 	ExplainAnalyzeDestination *tupleDestination = (ExplainAnalyzeDestination *) self;
+	ExplainAnalyzePrivate *explainAnalyzeData =
+		tupleDestination->originalTask->explainAnalyzePrivate;
+
 	if (queryNumber == 0)
 	{
 		TupleDestination *originalTupDest = tupleDestination->originalTaskDestination;
 		originalTupDest->putTuple(originalTupDest, task, placementIndex, 0, heapTuple,
 								  tupleLibpqSize);
-		tupleDestination->originalTask->totalReceivedTupleData += tupleLibpqSize;
+		explainAnalyzeData->totalReceivedTupleData += tupleLibpqSize;
 	}
 	else if (queryNumber == 1)
 	{
@@ -1187,10 +1221,9 @@ ExplainAnalyzeDestPutTuple(TupleDestination *self, Task *task,
 
 		char *fetchedExplainAnalyzePlan = TextDatumGetCString(explainAnalyze);
 
-		tupleDestination->originalTask->fetchedExplainAnalyzePlan =
+		explainAnalyzeData->fetchedExplainAnalyzePlan =
 			pstrdup(fetchedExplainAnalyzePlan);
-		tupleDestination->originalTask->fetchedExplainAnalyzePlacementIndex =
-			placementIndex;
+		explainAnalyzeData->fetchedExplainAnalyzePlacementIndex = placementIndex;
 	}
 	else
 	{
@@ -1374,6 +1407,17 @@ SplitString(const char *str, char delimiter)
 	tokenList = lappend(tokenList, token);
 
 	return tokenList;
+}
+
+
+void
+InitExplainAnalyzeInstrumentation(List *taskList)
+{
+	Task *task = NULL;
+	foreach_ptr(task, taskList)
+	{
+		task->explainAnalyzePrivate = palloc0(sizeof(ExplainAnalyzePrivate));
+	}
 }
 
 

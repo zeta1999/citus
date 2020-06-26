@@ -207,6 +207,7 @@ NonPushableInsertSelectExecScan(CustomScanState *node)
 			{
 				TupleDestination *defaultTupleDest = CreateTupleStoreTupleDest(
 					scanState->tuplestorestate, tupleDescriptor);
+				InitExplainAnalyzeInstrumentation(taskList);
 				taskList = ExplainAnalyzeTaskList(taskList, defaultTupleDest,
 												  tupleDescriptor, NULL);
 			}
@@ -278,6 +279,7 @@ NonPushableInsertSelectExecScan(CustomScanState *node)
 				{
 					TupleDestination *defaultTupleDest = CreateTupleStoreTupleDest(
 						scanState->tuplestorestate, tupleDescriptor);
+					InitExplainAnalyzeInstrumentation(prunedTaskList);
 					prunedTaskList = ExplainAnalyzeTaskList(prunedTaskList,
 															defaultTupleDest,
 															tupleDescriptor, NULL);

@@ -87,7 +87,6 @@ TupleStoreTupleDestPutTuple(TupleDestination *self, Task *task,
 {
 	TupleStoreTupleDestination *tupleDest = (TupleStoreTupleDestination *) self;
 	tuplestore_puttuple(tupleDest->tupleStore, heapTuple);
-	task->totalReceivedTupleData += tupleLibpqSize;
 }
 
 

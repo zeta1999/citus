@@ -693,15 +693,6 @@ AdaptiveExecutor(CitusScanState *scanState)
 	/* we should only call this once before the scan finished */
 	Assert(!scanState->finishedRemoteScan);
 
-	/* Reset Task fields that are only valid for a single execution */
-	Task *task = NULL;
-	foreach_ptr(task, taskList)
-	{
-		task->totalReceivedTupleData = 0;
-		task->fetchedExplainAnalyzePlacementIndex = 0;
-		task->fetchedExplainAnalyzePlan = NULL;
-	}
-
 	scanState->tuplestorestate =
 		tuplestore_begin_heap(randomAccess, interTransactions, work_mem);
 
@@ -711,6 +702,7 @@ AdaptiveExecutor(CitusScanState *scanState)
 
 	if (RequestedForExplainAnalyze(scanState))
 	{
+		InitExplainAnalyzeInstrumentation(taskList);
 		taskList = ExplainAnalyzeTaskList(taskList, defaultTupleDest, tupleDescriptor,
 										  paramListInfo);
 	}

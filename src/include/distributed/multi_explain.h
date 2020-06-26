@@ -22,6 +22,7 @@ extern void CitusExplainOneQuery(Query *query, int cursorOptions, IntoClause *in
 								 ExplainState *es, const char *queryString, ParamListInfo
 								 params,
 								 QueryEnvironment *queryEnv);
+extern void InitExplainAnalyzeInstrumentation(List *taskList);
 extern List * ExplainAnalyzeTaskList(List *originalTaskList,
 									 TupleDestination *defaultTupleDest, TupleDesc
 									 tupleDesc, ParamListInfo params);
