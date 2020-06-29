@@ -1,7 +1,7 @@
 -- Regression test for this issue:
 -- https://github.com/citusdata/citus/issues/3622
 SET citus.shard_count = 4;
-SET citus.replication_factor = 1;
+SET citus.shard_replication_factor = 1;
 SET citus.next_shard_id TO 1954000;
 SHOW citus.log_distributed_deadlock_detection;
 ALTER SYSTEM SET citus.log_distributed_deadlock_detection to ON;
