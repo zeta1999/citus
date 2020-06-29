@@ -1,6 +1,7 @@
 -- Regression test for this issue:
 -- https://github.com/citusdata/citus/issues/3622
 SET citus.shard_count = 4;
+SET citus.replication_factor = 1;
 SET citus.next_shard_id TO 1954000;
 CREATE SCHEMA rollback_to_savepoint;
 SET search_path TO rollback_to_savepoint;
