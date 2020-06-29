@@ -3,6 +3,10 @@
 SET citus.shard_count = 4;
 SET citus.replication_factor = 1;
 SET citus.next_shard_id TO 1954000;
+SHOW citus.log_distributed_deadlock_detection;
+ALTER SYSTEM SET citus.log_distributed_deadlock_detection to ON;
+SELECT pg_reload_conf();
+SHOW citus.log_distributed_deadlock_detection;
 CREATE SCHEMA rollback_to_savepoint;
 SET search_path TO rollback_to_savepoint;
 
