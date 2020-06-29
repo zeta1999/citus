@@ -81,8 +81,4 @@ test: subqueries_deep subquery_view subquery_partitioning subquery_complex_targe
 test: non_colocated_leaf_subquery_joins non_colocated_subquery_joins non_colocated_join_order
 test: subquery_prepared_statements pg12 cte_inline
 
-# ----------
-# Miscellaneous tests to check our query planning behavior
-# ----------
-test: multi_deparse_shard_query multi_distributed_transaction_id multi_real_time_transaction intermediate_results limit_intermediate_size
 test: rollback_to_savepoint
