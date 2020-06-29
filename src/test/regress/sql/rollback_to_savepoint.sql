@@ -3,10 +3,13 @@
 SET citus.shard_count = 4;
 SET citus.shard_replication_factor = 1;
 SET citus.next_shard_id TO 1954000;
-SHOW citus.log_distributed_deadlock_detection;
-ALTER SYSTEM SET citus.log_distributed_deadlock_detection to ON;
+-- For some reason generate_series(1, 10000000) seems to trigger a
+-- bug in deadlock detection sometimes. It triggers it for no apparent reason,
+-- so we disable it in this test.
+ALTER SYSTEM SET citus.distributed_deadlock_detection_factor TO -1;
 SELECT pg_reload_conf();
-SHOW citus.log_distributed_deadlock_detection;
+SELECT pg_sleep(0.1);
+SHOW citus.distributed_deadlock_detection_factor;
 CREATE SCHEMA rollback_to_savepoint;
 SET search_path TO rollback_to_savepoint;
 
@@ -26,3 +29,4 @@ INSERT INTO t SELECT i FROM generate_series(1, 100) i;
 ROLLBACK;
 
 DROP SCHEMA rollback_to_savepoint CASCADE;
+ALTER SYSTEM RESET citus.distributed_deadlock_detection_factor;
