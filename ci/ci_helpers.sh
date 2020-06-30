@@ -8,7 +8,7 @@
 # works and what this works around.
 # Source: https://superuser.com/a/1141026/242593
 shopt -s expand_aliases
-alias echo='{ save_flags="$-"; set +x;} 2> /dev/null; echo_and_restore'
+alias echo='{ save_flags="$-"; set +x;} 2> /dev/null && echo_and_restore'
 echo_and_restore() {
         builtin echo "$*"
         #shellcheck disable=SC2154
