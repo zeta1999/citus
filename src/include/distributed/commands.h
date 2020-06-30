@@ -237,7 +237,7 @@ extern List * MakeNameListFromRangeVar(const RangeVar *rel);
 
 
 /* truncate.c - forward declarations */
-extern void PostprocessTruncateStatement(TruncateStmt *truncateStatement);
+extern void PreprocessTruncateStatement(TruncateStmt *truncateStatement);
 
 /* type.c - forward declarations */
 extern List * PreprocessCompositeTypeStmt(Node *stmt, const char *queryString);

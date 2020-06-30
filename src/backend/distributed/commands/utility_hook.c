@@ -372,7 +372,7 @@ multi_ProcessUtility(PlannedStmt *pstmt,
 
 	if (IsA(parsetree, TruncateStmt))
 	{
-		PostprocessTruncateStatement((TruncateStmt *) parsetree);
+		PreprocessTruncateStatement((TruncateStmt *) parsetree);
 	}
 
 	/* only generate worker DDLJobs if propagation is enabled */

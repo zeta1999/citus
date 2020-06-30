@@ -43,6 +43,7 @@
 
 
 /* Local functions forward declarations for unsupported command checks */
+static void RangeVarLockRelation(RangeVar *rangeVar, LOCKMODE lockMode, bool missingOk);
 static void ErrorIfUnsupportedTruncateStmt(TruncateStmt *truncateStatement);
 static void ExecuteTruncateStmtSequentialIfNecessary(TruncateStmt *command);
 static void EnsurePartitionTableNotReplicatedForTruncate(TruncateStmt *truncateStatement);
@@ -237,17 +238,33 @@ EnsureLocalTableCanBeTruncated(Oid relationId)
 
 
 /*
- * PostprocessTruncateStatement handles few things that should be
+ * PreprocessTruncateStatement handles few things that should be
  * done before standard process utility is called for truncate
  * command.
  */
 void
-PostprocessTruncateStatement(TruncateStmt *truncateStatement)
+PreprocessTruncateStatement(TruncateStmt *truncateStatement)
 {
+	List *relationList = truncateStatement->relations;
+	RangeVar *rangeVar = NULL;
+	foreach_ptr(rangeVar, relationList)
+	{
+		/* lock relation if it exists, else, let standard process utility to error out */
+		bool missingOk = true;
+		RangeVarLockRelation(rangeVar, AccessExclusiveLock, missingOk);
+	}
+
 	ErrorIfUnsupportedTruncateStmt(truncateStatement);
 	EnsurePartitionTableNotReplicatedForTruncate(truncateStatement);
 	ExecuteTruncateStmtSequentialIfNecessary(truncateStatement);
 	LockTruncatedRelationMetadataInWorkers(truncateStatement);
+}
+
+
+static void
+RangeVarLockRelation(RangeVar *rangeVar, LOCKMODE lockMode, bool missingOk)
+{
+	(void) RangeVarGetRelid(rangeVar, lockMode, missingOk);
 }
 
 
