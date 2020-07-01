@@ -250,7 +250,7 @@ PreprocessTruncateStatement(TruncateStmt *truncateStatement)
 	foreach_ptr(rangeVar, relationList)
 	{
 		/* lock relation if it exists, else, let standard process utility to error out */
-		bool missingOk = true;
+		bool missingOk = false;
 		RangeVarLockRelation(rangeVar, AccessExclusiveLock, missingOk);
 	}
 
@@ -472,7 +472,6 @@ AcquireDistributedLockOnRelations(List *relationIdList, LOCKMODE lockMode)
 				/* if local node is one of the targets, acquire the lock locally */
 				if (workerNode->groupId == localGroupId)
 				{
-					LockRelationOid(relationId, lockMode);
 					continue;
 				}
 
