@@ -43,7 +43,6 @@
 
 
 /* Local functions forward declarations for unsupported command checks */
-static void RangeVarLockRelation(RangeVar *rangeVar, LOCKMODE lockMode, bool missingOk);
 static void ErrorIfUnsupportedTruncateStmt(TruncateStmt *truncateStatement);
 static void ExecuteTruncateStmtSequentialIfNecessary(TruncateStmt *command);
 static void EnsurePartitionTableNotReplicatedForTruncate(TruncateStmt *truncateStatement);
@@ -245,26 +244,11 @@ EnsureLocalTableCanBeTruncated(Oid relationId)
 void
 PreprocessTruncateStatement(TruncateStmt *truncateStatement)
 {
-	List *relationList = truncateStatement->relations;
-	RangeVar *rangeVar = NULL;
-	foreach_ptr(rangeVar, relationList)
-	{
-		/* lock relation if it exists, else, let standard process utility to error out */
-		bool missingOk = false;
-		RangeVarLockRelation(rangeVar, AccessExclusiveLock, missingOk);
-	}
-
+	LockTruncatedRelationMetadataInWorkers(truncateStatement);
 	ErrorIfUnsupportedTruncateStmt(truncateStatement);
 	EnsurePartitionTableNotReplicatedForTruncate(truncateStatement);
 	ExecuteTruncateStmtSequentialIfNecessary(truncateStatement);
-	LockTruncatedRelationMetadataInWorkers(truncateStatement);
-}
-
-
-static void
-RangeVarLockRelation(RangeVar *rangeVar, LOCKMODE lockMode, bool missingOk)
-{
-	(void) RangeVarGetRelid(rangeVar, lockMode, missingOk);
+	
 }
 
 
@@ -472,6 +456,7 @@ AcquireDistributedLockOnRelations(List *relationIdList, LOCKMODE lockMode)
 				/* if local node is one of the targets, acquire the lock locally */
 				if (workerNode->groupId == localGroupId)
 				{
+					LockRelationOid(relationId, lockMode);
 					continue;
 				}
 
