@@ -248,7 +248,6 @@ PreprocessTruncateStatement(TruncateStmt *truncateStatement)
 	ErrorIfUnsupportedTruncateStmt(truncateStatement);
 	EnsurePartitionTableNotReplicatedForTruncate(truncateStatement);
 	ExecuteTruncateStmtSequentialIfNecessary(truncateStatement);
-	
 }
 
 
