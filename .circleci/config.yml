@@ -291,7 +291,7 @@ workflows:
           filters:
             branches:
               ignore:
-                - /release-[0-9]+\.[0-9]+.*/ # match with releaseX.Y.*
+                - /release-[0-9]+\.[0-9]+.*/ # match with release-X.Y.*
 
       - build
       - check-style
