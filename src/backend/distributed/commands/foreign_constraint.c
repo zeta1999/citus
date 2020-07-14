@@ -180,10 +180,12 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 			referencedReplicationModel = referencingReplicationModel;
 		}
 
-		bool referencingIsNoneDistTable = (referencingDistMethod == DISTRIBUTE_BY_NONE);
-		bool referencedIsNoneDistTable = (referencedDistMethod == DISTRIBUTE_BY_NONE);
+		bool referencingIsCitusLocalOrRefTable = (referencingDistMethod ==
+												  DISTRIBUTE_BY_NONE);
+		bool referencedIsCitusLocalOrRefTable = (referencedDistMethod ==
+												 DISTRIBUTE_BY_NONE);
 
-		if (referencingIsNoneDistTable && referencedIsNoneDistTable)
+		if (referencingIsCitusLocalOrRefTable && referencedIsCitusLocalOrRefTable)
 		{
 			bool referencingIsReferenceTable =
 				(referencingReplicationModel == REPLICATION_MODEL_2PC);
@@ -210,7 +212,7 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 		 * Foreign keys from none dist. tables to distributed tables are not
 		 * supported.
 		 */
-		if (referencingIsNoneDistTable && !referencedIsNoneDistTable)
+		if (referencingIsCitusLocalOrRefTable && !referencedIsCitusLocalOrRefTable)
 		{
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("cannot create foreign key constraint "
@@ -295,7 +297,7 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 		 * if tables are hash-distributed and colocated, we need to make sure that
 		 * the distribution key is included in foreign constraint.
 		 */
-		if (!referencedIsNoneDistTable && !foreignConstraintOnDistKey)
+		if (!referencedIsCitusLocalOrRefTable && !foreignConstraintOnDistKey)
 		{
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("cannot create foreign key constraint"),
