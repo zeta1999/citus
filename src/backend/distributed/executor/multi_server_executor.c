@@ -51,10 +51,54 @@ JobExecutorType(DistributedPlan *distributedPlan)
 {
 	Job *job = distributedPlan->workerJob;
 	MultiExecutorType executorType = TaskExecutorType;
-	bool routerExecutablePlan = distributedPlan->routerExecutable;
+	bool planRequiresRepartitioning = job && list_length(job->dependentJobList) > 0;
+
+	if (distributedPlan->insertSelectQuery != NULL)
+	{
+		/*
+		 * Even if adaptiveExecutorEnabled, we go through
+		 * MULTI_EXECUTOR_NON_PUSHABLE_INSERT_SELECT because
+		 * the executor already knows how to handle adaptive
+		 * executor when necessary.
+		 */
+		return MULTI_EXECUTOR_NON_PUSHABLE_INSERT_SELECT;
+	}
+	else if (planRequiresRepartitioning ||
+			 (executorType == MULTI_EXECUTOR_TASK_TRACKER &&
+			  distributedPlan->modLevel == ROW_MODIFY_READONLY))
+	{
+		if (!EnableRepartitionJoins && planRequiresRepartitioning)
+		{
+			ereport(ERROR, (errmsg(
+								"the query contains a join that requires repartitioning"),
+							errhint("Set citus.enable_repartition_joins to on "
+									"to enable repartitioning")));
+		}
+
+		if ((planRequiresRepartitioning &&
+			 HasReplicatedDistributedTable(distributedPlan->relationIdList)) ||
+			executorType == MULTI_EXECUTOR_TASK_TRACKER)
+		{
+			int workerNodeCount = list_length(ActiveReadableNodeList());
+			int taskCount = list_length(job->taskList);
+			double tasksPerNode = taskCount / ((double) workerNodeCount);
+
+			/* if we have more tasks per node than what can be tracked, warn the user */
+			if (tasksPerNode >= MaxTrackedTasksPerNode)
+			{
+				ereport(WARNING, (errmsg(
+									  "this query assigns more tasks per node than the "
+									  "configured max_tracked_tasks_per_node limit")));
+			}
+
+			return MULTI_EXECUTOR_TASK_TRACKER;
+		}
+
+		return MULTI_EXECUTOR_ADAPTIVE;
+	}
 
 	/* debug distribution column value */
-	if (routerExecutablePlan)
+	if (list_length(job->taskList) == 1)
 	{
 		if (IsLoggableLevel(DEBUG2))
 		{
@@ -67,70 +111,14 @@ JobExecutorType(DistributedPlan *distributedPlan)
 				char *partitionColumnString = DatumToString(partitionColumnValue,
 															partitionColumnType);
 
-				ereport(DEBUG2, (errmsg("Plan is router executable"),
+				ereport(DEBUG2, (errmsg("Plan involves a single node query execution"),
 								 errdetail("distribution column value: %s",
 										   ApplyLogRedaction(partitionColumnString))));
 			}
-			else
-			{
-				ereport(DEBUG2, (errmsg("Plan is router executable")));
-			}
-		}
-
-		return MULTI_EXECUTOR_ADAPTIVE;
-	}
-
-	if (distributedPlan->insertSelectQuery != NULL)
-	{
-		/*
-		 * Even if adaptiveExecutorEnabled, we go through
-		 * MULTI_EXECUTOR_NON_PUSHABLE_INSERT_SELECT because
-		 * the executor already knows how to handle adaptive
-		 * executor when necessary.
-		 */
-		return MULTI_EXECUTOR_NON_PUSHABLE_INSERT_SELECT;
-	}
-
-	Assert(distributedPlan->modLevel == ROW_MODIFY_READONLY);
-
-
-	if (executorType == MULTI_EXECUTOR_ADAPTIVE)
-	{
-		/* if we have repartition jobs with adaptive executor and repartition
-		 * joins are not enabled, error out. Otherwise, switch to task-tracker
-		 */
-		int dependentJobCount = list_length(job->dependentJobList);
-		if (dependentJobCount > 0)
-		{
-			if (!EnableRepartitionJoins)
-			{
-				ereport(ERROR, (errmsg(
-									"the query contains a join that requires repartitioning"),
-								errhint("Set citus.enable_repartition_joins to on "
-										"to enable repartitioning")));
-			}
-			if (HasReplicatedDistributedTable(distributedPlan->relationIdList))
-			{
-				return MULTI_EXECUTOR_TASK_TRACKER;
-			}
-			return MULTI_EXECUTOR_ADAPTIVE;
-		}
-	}
-	else
-	{
-		int workerNodeCount = list_length(ActiveReadableNodeList());
-		int taskCount = list_length(job->taskList);
-		double tasksPerNode = taskCount / ((double) workerNodeCount);
-
-		/* if we have more tasks per node than what can be tracked, warn the user */
-		if (tasksPerNode >= MaxTrackedTasksPerNode)
-		{
-			ereport(WARNING, (errmsg("this query assigns more tasks per node than the "
-									 "configured max_tracked_tasks_per_node limit")));
 		}
 	}
 
-	return executorType;
+	return MULTI_EXECUTOR_ADAPTIVE;
 }
 
 
