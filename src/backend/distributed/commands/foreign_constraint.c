@@ -180,11 +180,10 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 			referencedReplicationModel = referencingReplicationModel;
 		}
 
-		bool referencingIsCitusLocalOrRefTable = (referencingDistMethod ==
-												  DISTRIBUTE_BY_NONE);
-		bool referencedIsCitusLocalOrRefTable = (referencedDistMethod ==
-												 DISTRIBUTE_BY_NONE);
-
+		bool referencingIsCitusLocalOrRefTable =
+			(referencingDistMethod == DISTRIBUTE_BY_NONE);
+		bool referencedIsCitusLocalOrRefTable =
+			(referencedDistMethod == DISTRIBUTE_BY_NONE);
 		if (referencingIsCitusLocalOrRefTable && referencedIsCitusLocalOrRefTable)
 		{
 			bool referencingIsReferenceTable =
@@ -193,6 +192,10 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 				(referencedReplicationModel != REPLICATION_MODEL_2PC);
 			if (referencingIsReferenceTable && referencedIsCitusLocalTable)
 			{
+				/*
+				 * We only support RESTRICT and NO ACTION behaviors for the
+				 * foreign keys from reference tables to citus local tables.
+				 */
 				if (!(BehaviorIsRestrictOrNoAction(constraintForm->confdeltype) &&
 					  BehaviorIsRestrictOrNoAction(constraintForm->confupdtype)))
 				{
