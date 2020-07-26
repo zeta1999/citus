@@ -498,6 +498,36 @@ CloseAllConnectionsAfterTransaction(void)
 
 
 /*
+ * ConnectionAvaliableToNode returns true if the session has at least one connection
+ * established and avaliable to use to the give node.
+ */
+bool
+ConnectionAvaliableToNode(char *hostName, int nodePort, char *userName, char *database)
+{
+	ConnectionHashKey key;
+	bool found = false;
+
+	strlcpy(key.hostname, hostName, MAX_NODE_LENGTH);
+	key.port = nodePort;
+	strlcpy(key.user, userName, NAMEDATALEN);
+	strlcpy(key.database, database, NAMEDATALEN);
+
+	ConnectionHashEntry *entry =
+		(ConnectionHashEntry *) hash_search(ConnectionHash, &key, HASH_FIND, &found);
+
+	if (!found)
+	{
+		return false;
+	}
+
+	int flags = 0;
+	MultiConnection *connection = FindAvailableConnection(entry->connections, flags);
+
+	return connection != NULL;
+}
+
+
+/*
  * CloseNodeConnectionsAfterTransaction sets the forceClose flag of the connections
  * to a particular node as true such that the connections are no longer cached. This
  * is mainly used when a worker leaves the cluster.

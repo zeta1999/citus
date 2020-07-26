@@ -35,10 +35,11 @@
 #include "storage/ipc.h"
 
 
-#define REMOTE_CONNECTION_STATS_COLUMNS 4
+#define REMOTE_CONNECTION_STATS_COLUMNS 5
 
 #define ADJUST_POOLSIZE_AUTOMATICALLY 0
 #define DISABLE_CONNECTION_THROTTLING -1
+
 
 /*
  * The data structure used to store data in shared memory. This data structure is only
@@ -77,7 +78,9 @@ typedef struct SharedConnStatsHashEntry
 {
 	SharedConnStatsHashKey key;
 
-	int connectionCount;
+	/* sum of the two cannot  be greated than GetMaxSharedPoolSize() */
+	int establishedConnectionCount;
+	int reservedConnectionCount;
 } SharedConnStatsHashEntry;
 
 
@@ -97,6 +100,12 @@ static ConnectionStatsSharedData *ConnectionStatsSharedState = NULL;
 
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 
+/*
+ * Optimize cleaning up reservations if we have not reserved
+ * any connections for this session.
+ */
+static bool reservedAnyConnections = false;
+
 
 /* local function declarations */
 static void StoreAllRemoteConnectionStats(Tuplestorestate *tupleStore, TupleDesc
@@ -108,6 +117,11 @@ static size_t SharedConnectionStatsShmemSize(void);
 static bool ShouldWaitForConnection(int currentConnectionCount);
 static int SharedConnectionHashCompare(const void *a, const void *b, Size keysize);
 static uint32 SharedConnectionHashHash(const void *key, Size keysize);
+
+/* functions related to connection reservation */
+static void ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList);
+static bool TryToReserveSharedConnectionCounter(const char *hostname, int port);
+static void WaitLoopForSharedConnectionReservation(const char *hostname, int port);
 
 
 PG_FUNCTION_INFO_V1(citus_remote_connection_stats);
@@ -169,7 +183,8 @@ StoreAllRemoteConnectionStats(Tuplestorestate *tupleStore, TupleDesc tupleDescri
 		values[0] = PointerGetDatum(cstring_to_text(connectionEntry->key.hostname));
 		values[1] = Int32GetDatum(connectionEntry->key.port);
 		values[2] = PointerGetDatum(cstring_to_text(databaseName));
-		values[3] = Int32GetDatum(connectionEntry->connectionCount);
+		values[3] = Int32GetDatum(connectionEntry->establishedConnectionCount);
+		values[4] = Int32GetDatum(connectionEntry->reservedConnectionCount);
 
 		tuplestore_putvalues(tupleStore, tupleDescriptor, values, isNulls);
 	}
@@ -276,18 +291,27 @@ TryToIncrementSharedConnectionCounter(const char *hostname, int port)
 	if (!entryFound)
 	{
 		/* we successfully allocated the entry for the first time, so initialize it */
-		connectionEntry->connectionCount = 1;
+		connectionEntry->establishedConnectionCount = 1;
+		connectionEntry->reservedConnectionCount = 0;
 
 		counterIncremented = true;
 	}
-	else if (connectionEntry->connectionCount + 1 > GetMaxSharedPoolSize())
+	else if (connectionEntry->reservedConnectionCount > 0)
+	{
+		/* moved reserved budget into the established connections */
+		connectionEntry->reservedConnectionCount--;
+		connectionEntry->establishedConnectionCount++;
+
+		counterIncremented = true;
+	}
+	else if (connectionEntry->establishedConnectionCount + 1 > GetMaxSharedPoolSize())
 	{
 		/* there is no space left for this connection */
 		counterIncremented = false;
 	}
 	else
 	{
-		connectionEntry->connectionCount++;
+		connectionEntry->establishedConnectionCount++;
 		counterIncremented = true;
 	}
 
@@ -352,10 +376,10 @@ IncrementSharedConnectionCounter(const char *hostname, int port)
 	if (!entryFound)
 	{
 		/* we successfully allocated the entry for the first time, so initialize it */
-		connectionEntry->connectionCount = 0;
+		connectionEntry->establishedConnectionCount = 0;
 	}
 
-	connectionEntry->connectionCount += 1;
+	connectionEntry->establishedConnectionCount += 1;
 
 	UnLockConnectionSharedMemory();
 }
@@ -408,11 +432,11 @@ DecrementSharedConnectionCounter(const char *hostname, int port)
 	}
 
 	/* we should never go below 0 */
-	Assert(connectionEntry->connectionCount > 0);
+	Assert(connectionEntry->establishedConnectionCount > 0);
 
-	connectionEntry->connectionCount -= 1;
+	connectionEntry->establishedConnectionCount -= 1;
 
-	if (connectionEntry->connectionCount == 0)
+	if (connectionEntry->establishedConnectionCount == 0)
 	{
 		/*
 		 * We don't have to remove at this point as the node might be still active
@@ -427,6 +451,217 @@ DecrementSharedConnectionCounter(const char *hostname, int port)
 	UnLockConnectionSharedMemory();
 
 	WakeupWaiterBackendsForSharedConnection();
+}
+
+
+/*
+ * UnReserveAllSharedConnections sets the reservedConnectionCount to zero
+ * for all nodes.
+ */
+void
+UnReserveAllSharedConnections(void)
+{
+	if (GetMaxSharedPoolSize() == DISABLE_CONNECTION_THROTTLING)
+	{
+		/* connection throttling disabled */
+		return;
+	}
+	else if (!reservedAnyConnections)
+	{
+		/*
+		 * Unreserving requires shared memory access. If no reservations has
+		 * happened, better not to go in that route.
+		 */
+		return;
+	}
+
+	HASH_SEQ_STATUS status;
+	SharedConnStatsHashEntry *connectionEntry = NULL;
+
+	LockConnectionSharedMemory(LW_EXCLUSIVE);
+
+	hash_seq_init(&status, SharedConnStatsHash);
+	while ((connectionEntry = (SharedConnStatsHashEntry *) hash_seq_search(&status)) != 0)
+	{
+		connectionEntry->reservedConnectionCount = 0;
+	}
+
+	UnLockConnectionSharedMemory();
+
+	/* all reservations are cleared */
+	reservedAnyConnections = false;
+
+	WakeupWaiterBackendsForSharedConnection();
+}
+
+
+/*
+ * ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded is a wrapper around
+ * ReserveSharedConnectionCounterForNodeListIfNeeded.
+ */
+void
+ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded(void)
+{
+	List *primaryNodeList = ActivePrimaryNonCoordinatorNodeList(NoLock);
+
+	ReserveSharedConnectionCounterForNodeListIfNeeded(primaryNodeList);
+}
+
+
+/*
+ * ReserveSharedConnectionCounterForNodeListIfNeeded reserves a shared connection
+ * counter per node in the nodeList unless:
+ *  - there is at least one connection to the node
+ *  - has already reserved a connection to the node
+ */
+static void
+ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList)
+{
+	if (GetMaxSharedPoolSize() == DISABLE_CONNECTION_THROTTLING)
+	{
+		/* connection throttling disabled */
+		return;
+	}
+
+	/*
+	 * We sort the workerList because adaptive connection management
+	 * (e.g., OPTIONAL_CONNECTION) requires any concurrent executions
+	 * to wait for the connections in the same order to prevent any
+	 * starvation. If we don't sort, we might end up with:
+	 *      Execution 1: Get connection for worker 1, wait for worker 2
+	 *      Execution 2: Get connection for worker 2, wait for worker 1
+	 *
+	 *  and, none could proceed. Instead, we enforce every execution establish
+	 *  the required connections to workers in the same order.
+	 */
+	nodeList = SortList(nodeList, CompareWorkerNodes);
+
+	char *databaseName = get_database_name(MyDatabaseId);
+
+	WorkerNode *workerNode = NULL;
+	foreach_ptr(workerNode, nodeList)
+	{
+		if (ConnectionAvaliableToNode(workerNode->workerName, workerNode->workerPort,
+									  CurrentUserName(), databaseName))
+		{
+			/*
+			 * The same user has already an active connection for the node. It
+			 * means that the execution can use the same connection, so reservation
+			 * is not necessary.
+			 */
+			continue;
+		}
+
+		/*
+		 * Increment the shared counter, we may need to wait if there are
+		 * no space left.
+		 */
+		WaitLoopForSharedConnectionReservation(workerNode->workerName,
+											   workerNode->workerPort);
+	}
+}
+
+
+/*
+ * WaitLoopForSharedConnection tries to increment the shared connection
+ * counter for the given hostname/port and the current database in
+ * SharedConnStatsHash.
+ *
+ * The function implements a retry mechanism via a condition variable.
+ */
+static void
+WaitLoopForSharedConnectionReservation(const char *hostname, int port)
+{
+	while (!TryToReserveSharedConnectionCounter(hostname, port))
+	{
+		CHECK_FOR_INTERRUPTS();
+
+		WaitForSharedConnection();
+	}
+
+	ConditionVariableCancelSleep();
+
+	/* we reserved at least one connection */
+	reservedAnyConnections = true;
+}
+
+
+/*
+ * TryToReserveSharedConnectionCounter tries to increment the shared
+ * reserved connection counter for the given nodeId and the current
+ * database in SharedConnStatsHash.
+ *
+ * If the function returns true, the called reserves a budget in the
+ * shared memory counters, and guranteed to get one when requested.
+ */
+static bool
+TryToReserveSharedConnectionCounter(const char *hostname, int port)
+{
+	if (GetMaxSharedPoolSize() == DISABLE_CONNECTION_THROTTLING)
+	{
+		/* connection throttling disabled */
+		return true;
+	}
+
+	bool reservedCounter = false;
+	SharedConnStatsHashKey connKey;
+
+	strlcpy(connKey.hostname, hostname, MAX_NODE_LENGTH);
+	if (strlen(hostname) > MAX_NODE_LENGTH)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("hostname exceeds the maximum length of %d",
+							   MAX_NODE_LENGTH)));
+	}
+
+	connKey.port = port;
+	connKey.databaseOid = MyDatabaseId;
+
+	LockConnectionSharedMemory(LW_EXCLUSIVE);
+
+	/*
+	 * As the hash map is  allocated in shared memory, it doesn't rely on palloc for
+	 * memory allocation, so we could get NULL via HASH_ENTER_NULL when there is no
+	 * space in the shared memory. That's why we prefer continuing the execution
+	 * instead of throwing an error.
+	 */
+	bool entryFound = false;
+	SharedConnStatsHashEntry *connectionEntry =
+		hash_search(SharedConnStatsHash, &connKey, HASH_ENTER_NULL, &entryFound);
+
+	/*
+	 * It is possible to throw an error at this point, but that doesn't help us in anyway.
+	 * Instead, we try our best, let the connection establishment continue by-passing the
+	 * connection throttling.
+	 */
+	if (!connectionEntry)
+	{
+		UnLockConnectionSharedMemory();
+		return true;
+	}
+
+	if (!entryFound)
+	{
+		/* we successfully allocated the entry for the first time, so initialize it */
+		connectionEntry->reservedConnectionCount = 1;
+
+		reservedCounter = true;
+	}
+	else if ((connectionEntry->reservedConnectionCount +
+			  connectionEntry->establishedConnectionCount + 1) > GetMaxSharedPoolSize())
+	{
+		/* there is no space left for this connection */
+		reservedCounter = false;
+	}
+	else
+	{
+		connectionEntry->reservedConnectionCount++;
+		reservedCounter = true;
+	}
+
+	UnLockConnectionSharedMemory();
+
+	return reservedCounter;
 }
 
 

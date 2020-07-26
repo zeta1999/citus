@@ -459,7 +459,7 @@ ResetGlobalVariables()
 	activeSetStmts = NULL;
 	CoordinatedTransactionUses2PC = false;
 	TransactionModifiedNodeMetadata = false;
-
+	UnReserveAllSharedConnections();
 	ResetWorkerErrorIndication();
 }
 

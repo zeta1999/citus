@@ -22,6 +22,7 @@
 #include "distributed/multi_partitioning_utils.h"
 #include "distributed/placement_connection.h"
 #include "distributed/relation_access_tracking.h"
+#include "distributed/shared_connection_stats.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
@@ -209,6 +210,14 @@ GetPlacementConnection(uint32 flags, ShardPlacement *placement, const char *user
 {
 	MultiConnection *connection = StartPlacementConnection(flags, placement, userName);
 
+	if (connection == NULL)
+	{
+		/* connection can only be NULL for optional connections */
+		Assert((flags & OPTIONAL_CONNECTION));
+
+		return NULL;
+	}
+
 	FinishConnectionEstablishment(connection);
 	return connection;
 }
@@ -294,12 +303,13 @@ StartPlacementListConnection(uint32 flags, List *placementAccessList,
 		chosenConnection = StartNodeUserDatabaseConnection(flags, nodeName, nodePort,
 														   userName, NULL);
 
-		/*
-		 * chosenConnection can only be NULL for optional connections, which we
-		 * don't support in this codepath.
-		 */
-		Assert((flags & OPTIONAL_CONNECTION) == 0);
-		Assert(chosenConnection != NULL);
+		if (chosenConnection == NULL)
+		{
+			/* connection can only be NULL for optional connections */
+			Assert((flags & OPTIONAL_CONNECTION));
+
+			return NULL;
+		}
 
 		if ((flags & REQUIRE_CLEAN_CONNECTION) &&
 			ConnectionAccessedDifferentPlacement(chosenConnection, placement))
@@ -320,13 +330,6 @@ StartPlacementListConnection(uint32 flags, List *placementAccessList,
 															   FORCE_NEW_CONNECTION,
 															   nodeName, nodePort,
 															   userName, NULL);
-
-			/*
-			 * chosenConnection can only be NULL for optional connections,
-			 * which we don't support in this codepath.
-			 */
-			Assert((flags & OPTIONAL_CONNECTION) == 0);
-			Assert(chosenConnection != NULL);
 
 			Assert(!ConnectionAccessedDifferentPlacement(chosenConnection, placement));
 		}
