@@ -50,6 +50,13 @@
 
 
 #define RESERVED_CONNECTION_STATS_COLUMNS 4
+#define MAX_NESTED_RESERVATION_DEPTH 5
+
+#define CURRENT_LEVEL_GET_RESERVATION_COUNT( \
+		entry) entry->reservedConnectionCounts[entry->reservationLevel]
+#define SET_CURRENT_LEVEL_GET_RESERVATION_COUNT(entry, \
+												value) entry->reservedConnectionCounts[ \
+		entry->reservationLevel] = value
 
 
 /* session specific hash map*/
@@ -71,7 +78,8 @@ typedef struct ReservedConnectionCounterHashEntry
 {
 	ReservedConnectionCounterHashKey key;
 
-	int reservedConnectionCount;
+	int reservationLevel;
+	int reservedConnectionCounts[MAX_NESTED_RESERVATION_DEPTH];
 } ReservedConnectionCounterHashEntry;
 
 
@@ -84,6 +92,10 @@ static bool IsReservationRequired(void);
 static uint32 LocalConnectionReserveHashHash(const void *key, Size keysize);
 static int LocalConnectionReserveHashCompare(const void *a, const void *b, Size keysize);
 
+
+static void AddToReservationLevel(int value);
+static void DecrementReservationLevel();
+static void IncrementReservationLevel();
 
 PG_FUNCTION_INFO_V1(citus_reserved_connection_stats);
 
@@ -142,7 +154,7 @@ StoreAllReservedConnectionStats(Tuplestorestate *tupleStore, TupleDesc tupleDesc
 		values[0] = PointerGetDatum(cstring_to_text(connectionEntry->key.hostname));
 		values[1] = Int32GetDatum(connectionEntry->key.port);
 		values[2] = PointerGetDatum(cstring_to_text(databaseName));
-		values[3] = Int32GetDatum(connectionEntry->reservedConnectionCount);
+		values[3] = Int32GetDatum(0);
 
 		tuplestore_putvalues(tupleStore, tupleDescriptor, values, isNulls);
 	}
@@ -202,7 +214,7 @@ HasAlreadyReservedConnection(const char *hostName, int nodePort, Oid databaseOid
 		return false;
 	}
 
-	return entry->reservedConnectionCount > 0;
+	return CURRENT_LEVEL_GET_RESERVATION_COUNT(entry) > 0;
 }
 
 
@@ -227,24 +239,26 @@ DeallocateReservedConnections(int count)
 			 * the nodes. Each node might have different number of reserved
 			 * connections.
 			 */
-			deallocateCountForEntry = entry->reservedConnectionCount;
+			deallocateCountForEntry = CURRENT_LEVEL_GET_RESERVATION_COUNT(entry);
 		}
 		else
 		{
 			/* at most deallocate reservedConnectionCount */
-			deallocateCountForEntry = Min(count, entry->reservedConnectionCount);
+			deallocateCountForEntry = Min(count, CURRENT_LEVEL_GET_RESERVATION_COUNT(
+											  entry));
 		}
 
 		Assert(deallocateCountForEntry >= 0);
 		DecrementSharedConnectionCounter(entry->key.hostname, entry->key.port,
 										 deallocateCountForEntry);
 
-		entry->reservedConnectionCount -= deallocateCountForEntry;
-		Assert(entry->reservedConnectionCount >= 0);
+		int currentLevelCount = CURRENT_LEVEL_GET_RESERVATION_COUNT(entry);
+		SET_CURRENT_LEVEL_GET_RESERVATION_COUNT(entry, currentLevelCount -
+												deallocateCountForEntry);
 
 		ereport(DEBUG5, (errmsg("Decrement shared reserved connection to node "
 								"%s:%d to %d", entry->key.hostname, entry->key.port,
-								entry->reservedConnectionCount)));
+								CURRENT_LEVEL_GET_RESERVATION_COUNT(entry))));
 
 		bool found = false;
 
@@ -255,6 +269,8 @@ DeallocateReservedConnections(int count)
 		hash_search(SessionLocalReservedConnectionCounters, entry, HASH_REMOVE, &found);
 		Assert(found);
 	}
+
+	DecrementReservationLevel();
 }
 
 
@@ -282,10 +298,8 @@ DecrementReservedConnection(const char *hostName, int nodePort, Oid databaseOid)
 								"disable reserved connection counters")));
 	}
 
-	entry->reservedConnectionCount--;
-
-	ereport(DEBUG5, (errmsg("Decrement shared reserved connection to node %s:%d to %d",
-							hostName, nodePort, entry->reservedConnectionCount)));
+	int currentLevelCount = CURRENT_LEVEL_GET_RESERVATION_COUNT(entry);
+	SET_CURRENT_LEVEL_GET_RESERVATION_COUNT(entry, currentLevelCount - 1);
 }
 
 
@@ -330,6 +344,8 @@ ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList)
 	{
 		return;
 	}
+
+	IncrementReservationLevel();
 
 	/*
 	 * We sort the workerList because adaptive connection management
@@ -382,7 +398,49 @@ ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList)
 		WaitLoopForSharedConnection(workerNode->workerName, workerNode->workerPort);
 
 		/* locally mark that we have one connection reserved */
-		hashEntry->reservedConnectionCount++;
+		int currentLevelCount = CURRENT_LEVEL_GET_RESERVATION_COUNT(hashEntry);
+		SET_CURRENT_LEVEL_GET_RESERVATION_COUNT(hashEntry, currentLevelCount + 1);
+	}
+}
+
+
+static void
+IncrementReservationLevel()
+{
+	AddToReservationLevel(1);
+}
+
+
+static void
+DecrementReservationLevel()
+{
+	AddToReservationLevel(-1);
+}
+
+
+static void
+AddToReservationLevel(int value)
+{
+	HASH_SEQ_STATUS status;
+	ReservedConnectionCounterHashEntry *connectionEntry = NULL;
+
+	hash_seq_init(&status, SessionLocalReservedConnectionCounters);
+	while ((connectionEntry = (ReservedConnectionCounterHashEntry *) hash_seq_search(
+				&status)) != 0)
+	{
+		if (value > 0 && connectionEntry->reservationLevel < MAX_NESTED_RESERVATION_DEPTH)
+		{
+			connectionEntry->reservationLevel += value;
+		}
+		else if (value < 0 && connectionEntry->reservationLevel > 1)
+		{
+			connectionEntry->reservationLevel += value;
+		}
+		else
+		{
+			/* no need to continue */
+			break;
+		}
 	}
 }
 
@@ -447,11 +505,9 @@ AllocateOrGetReservedConectionEntry(char *hostName, int nodePort, Oid databaseOi
 
 	if (!found)
 	{
-		entry->reservedConnectionCount = 0;
-
-		ereport(DEBUG5, (errmsg("Allocated shared reserved connection to node "
-								"%s:%d to %d", entry->key.hostname, entry->key.port,
-								entry->reservedConnectionCount)));
+		entry->reservationLevel = 0;
+		memset(entry->reservedConnectionCounts, 0,
+			   sizeof(entry->reservedConnectionCounts));
 	}
 
 	return entry;
