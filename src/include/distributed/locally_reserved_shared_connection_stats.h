@@ -22,7 +22,7 @@ extern bool HasAlreadyReservedConnection(const char *hostName, int nodePort,
 extern void DecrementReservedConnection(const char *hostName, int nodePort,
 										Oid databaseOid);
 extern void DeallocateReservedConnections(int count);
-extern void ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded(int count);
+extern void EnsurePrimaryNodesHaveReservedConnection(int count);
 
 
 #endif /* LOCALLY_RESERVED_SHARED_CONNECTION_STATS_H_ */

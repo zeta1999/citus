@@ -4,7 +4,7 @@
  *
  *   Keeps track of the number of reserved connections to remote nodes
  *   for this backend. The primary goal is to complement the logic
- *   implemented shared_connection_stats.c which aims to prevent excessive
+ *   implemented in shared_connection_stats.c which aims to prevent excessive
  *   number of connections (typically > max_connections) to any worker node.
  *   With this locally reserved connection stats, we enforce the same
  *   constraints considering these locally reserved shared connections.
@@ -14,7 +14,7 @@
  *               (b) Reserving connections, the logic that this
  *                   file implements.
  *
- *   Finally, as the name already implies, once a node has a reserved a  shared
+ *   Finally, as the name already implies, once a node has reserved a  shared
  *   connection, it is guaranteed to have the right to establish a connection
  *   to the given remote node when needed.
  *
@@ -79,6 +79,7 @@ static void StoreAllReservedConnectionStats(Tuplestorestate *tupleStore,
 static ReservedConnectionCounterHashEntry * AllocateOrGetReservedConectionEntry(
 	char *hostName, int nodePort, Oid databaseOid);
 static void ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList);
+static bool IsReservationRequired(void);
 static uint32 LocalConnectionReserveHashHash(const void *key, Size keysize);
 static int LocalConnectionReserveHashCompare(const void *a, const void *b, Size keysize);
 
@@ -107,7 +108,7 @@ citus_reserved_connection_stats(PG_FUNCTION_ARGS)
 
 
 /*
- * StoreAllRemoteConnectionStats gets connections established from the current node
+ * StoreAllReservedConnectionStats gets connections established from the current node
  * and inserts them into the given tuplestore.
  *
  * We don't need to enforce any access privileges as the number of backends
@@ -288,11 +289,11 @@ DecrementReservedConnection(const char *hostName, int nodePort, Oid databaseOid)
 
 
 /*
- * ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded is a wrapper around
+ * EnsurePrimaryNodesHaveReservedConnection is a wrapper around
  * ReserveSharedConnectionCounterForNodeListIfNeeded.
  */
 void
-ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded(int count)
+EnsurePrimaryNodesHaveReservedConnection(int count)
 {
 	/* prevent addition of new nodes */
 	List *primaryNodeList = ActivePrimaryNodeList(ShareLock);
@@ -314,34 +315,13 @@ ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded(int count)
  * ReserveSharedConnectionCounterForNodeListIfNeeded reserves a shared connection
  * counter per node in the nodeList unless:
  *  - there is at least one connection to the node
- *  - has already reserved a connection to the node
  */
 static void
 ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList)
 {
-	if (GetMaxSharedPoolSize() == DISABLE_CONNECTION_THROTTLING)
+	if (!IsReservationRequired())
 	{
-		/* connection throttling disabled */
 		return;
-	}
-
-	if (UseConnectionPerPlacement())
-	{
-		/*
-		 * For this case, we are not enforcing adaptive
-		 * connection management anyway.
-		 */
-		return;
-	}
-
-	if (SessionLocalReservedConnectionCounters == NULL)
-	{
-		/*
-		 * This is unexpected as SessionLocalReservedConnectionCounters hash table is
-		 * created at startup. Still, let's be defensive.
-		 */
-		ereport(ERROR, (errmsg("unexpected state for session level reserved "
-							   "connection counter hash")));
 	}
 
 	/*
@@ -401,7 +381,42 @@ ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList)
 
 
 /*
- * AllocateReservedConectionEntry allocated the required entry in the hash
+ * IsReservationRequired returns true if the state of the current
+ * session is eligible for shared connection reservation.
+ */
+static bool
+IsReservationRequired(void)
+{
+	if (GetMaxSharedPoolSize() == DISABLE_CONNECTION_THROTTLING)
+	{
+		/* connection throttling disabled */
+		return false;
+	}
+
+	if (UseConnectionPerPlacement())
+	{
+		/*
+		 * For this case, we are not enforcing adaptive
+		 * connection management anyway.
+		 */
+		return false;
+	}
+
+	if (SessionLocalReservedConnectionCounters == NULL)
+	{
+		/*
+		 * This is unexpected as SessionLocalReservedConnectionCounters hash table is
+		 * created at startup. Still, let's be defensive.
+		 */
+		return false;
+	}
+
+	return true;
+}
+
+
+/*
+ * AllocateReservedConectionEntry allocates the required entry in the hash
  * map by HASH_ENTER. The function throws an error if it cannot allocate
  * the entry.
  */

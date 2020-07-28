@@ -2285,7 +2285,7 @@ CitusCopyDestReceiverStartup(DestReceiver *dest, int operation,
 	 * the function.
 	 */
 	int reserveCount = copyDest->reserveConnectionPerNode;
-	ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded(reserveCount);
+	EnsurePrimaryNodesHaveReservedConnection(reserveCount);
 }
 
 
