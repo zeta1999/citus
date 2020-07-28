@@ -324,6 +324,15 @@ ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList)
 		return;
 	}
 
+	if (UseConnectionPerPlacement())
+	{
+		/*
+		 * For this case, we are not enforcing adaptive
+		 * connection management anyway.
+		 */
+		return;
+	}
+
 	if (SessionLocalReservedConnectionCounters == NULL)
 	{
 		/*
