@@ -293,7 +293,8 @@ DecrementReservedConnection(const char *hostName, int nodePort, Oid databaseOid)
 void
 ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded(int count)
 {
-	List *primaryNodeList = ActivePrimaryNonCoordinatorNodeList(NoLock);
+	/* prevent addition of new nodes */
+	List *primaryNodeList = ActivePrimaryNodeList(ShareLock);
 
 	/*
 	 * We need to reserve connection one by one because the underlying
