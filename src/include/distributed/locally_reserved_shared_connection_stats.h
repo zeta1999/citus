@@ -1,12 +1,15 @@
-/*
- * locally_reserved_shared_connection_stats.h
+/*-------------------------------------------------------------------------
  *
- *  Created on: Jul 21, 2020
- *      Author: onderkalaci
+ * locally_reserved_shared_connection_stats.h
+ *   Management of connection reservations in shard memory pool
+ *
+ * Copyright (c) Citus Data, Inc.
+ *
+ *-------------------------------------------------------------------------
  */
 
-#ifndef SRC_INCLUDE_DISTRIBUTED_LOCALLY_RESERVED_SHARED_CONNECTION_STATS_H_
-#define SRC_INCLUDE_DISTRIBUTED_LOCALLY_RESERVED_SHARED_CONNECTION_STATS_H_
+#ifndef LOCALLY_RESERVED_SHARED_CONNECTION_STATS_H_
+#define LOCALLY_RESERVED_SHARED_CONNECTION_STATS_H_
 
 #include "distributed/connection_management.h"
 
@@ -22,4 +25,4 @@ extern void DeallocateReservedConnections(int count);
 extern void ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded(int count);
 
 
-#endif /* SRC_INCLUDE_DISTRIBUTED_LOCALLY_RESERVED_SHARED_CONNECTION_STATS_H_ */
+#endif /* LOCALLY_RESERVED_SHARED_CONNECTION_STATS_H_ */
