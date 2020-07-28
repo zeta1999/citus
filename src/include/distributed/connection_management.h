@@ -238,7 +238,7 @@ extern MultiConnection * StartNodeUserDatabaseConnection(uint32 flags,
 														 const char *database);
 extern void CloseAllConnectionsAfterTransaction(void);
 extern void CloseNodeConnectionsAfterTransaction(char *nodeName, int nodePort);
-extern bool ConnectionAvaliableToNode(char *hostName, int nodePort, char *userName,
+extern bool ConnectionAvailableToNode(char *hostName, int nodePort, char *userName,
 									  char *database);
 extern void CloseConnection(MultiConnection *connection);
 extern void ShutdownAllConnections(void);

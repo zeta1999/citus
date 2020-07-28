@@ -351,7 +351,7 @@ ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList)
 	WorkerNode *workerNode = NULL;
 	foreach_ptr(workerNode, nodeList)
 	{
-		if (ConnectionAvaliableToNode(workerNode->workerName, workerNode->workerPort,
+		if (ConnectionAvailableToNode(workerNode->workerName, workerNode->workerPort,
 									  CurrentUserName(), databaseName))
 		{
 			/*

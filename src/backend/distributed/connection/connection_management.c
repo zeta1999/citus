@@ -499,11 +499,11 @@ CloseAllConnectionsAfterTransaction(void)
 
 
 /*
- * ConnectionAvaliableToNode returns true if the session has at least one connection
+ * ConnectionAvailableToNode returns true if the session has at least one connection
  * established and avaliable to use to the give node.
  */
 bool
-ConnectionAvaliableToNode(char *hostName, int nodePort, char *userName, char *database)
+ConnectionAvailableToNode(char *hostName, int nodePort, char *userName, char *database)
 {
 	ConnectionHashKey key;
 	bool found = false;
