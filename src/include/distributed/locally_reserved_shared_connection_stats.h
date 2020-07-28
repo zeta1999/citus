@@ -10,13 +10,16 @@
 
 #include "distributed/connection_management.h"
 
+
+#define DEALLOCATE_ALL -1
+
 extern void InitializeLocallyReservedSharedConnectionStats(void);
 extern bool HasAlreadyReservedConnection(const char *hostName, int nodePort,
 										 Oid databaseOid);
 extern void DecrementReservedConnection(const char *hostName, int nodePort,
 										Oid databaseOid);
-extern void DeallocateAllReservedConnections(void);
-extern void ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded(void);
+extern void DeallocateReservedConnections(int count);
+extern void ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded(int count);
 
 
 #endif /* SRC_INCLUDE_DISTRIBUTED_LOCALLY_RESERVED_SHARED_CONNECTION_STATS_H_ */

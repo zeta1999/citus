@@ -434,7 +434,7 @@ CitusCleanupConnectionsAtExit(int code, Datum arg)
 	 * pool if any. This operation is a no-op if the reserved connections
 	 * are already given away.
 	 */
-	DeallocateAllReservedConnections();
+	DeallocateReservedConnections(DEALLOCATE_ALL);
 }
 
 

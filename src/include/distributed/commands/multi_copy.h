@@ -132,6 +132,9 @@ typedef struct CitusCopyDestReceiver
 
 	/* copy into intermediate result */
 	char *intermediateResultIdPrefix;
+
+	/* reserve shared connections up front */
+	int reserveConnectionPerNode;
 } CitusCopyDestReceiver;
 
 

@@ -2051,6 +2051,9 @@ CreateCitusCopyDestReceiver(Oid tableId, List *columnNameList, int partitionColu
 	copyDest->intermediateResultIdPrefix = intermediateResultIdPrefix;
 	copyDest->memoryContext = CurrentMemoryContext;
 
+	/* one connection per node is sufficient to finish COPY successfully */
+	copyDest->reserveConnectionPerNode = 1;
+
 	return copyDest;
 }
 
@@ -2281,7 +2284,8 @@ CitusCopyDestReceiverStartup(DestReceiver *dest, int operation,
 	 * do it right here. For the details on why the order important, see
 	 * the function.
 	 */
-	ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded();
+	int reserveCount = copyDest->reserveConnectionPerNode;
+	ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded(reserveCount);
 }
 
 
@@ -2606,7 +2610,8 @@ CitusCopyDestReceiverShutdown(DestReceiver *destReceiver)
 	 * We are not going to need any reserved connections for this COPY command,
 	 * so proactively deallocate all the reserved connections right now.
 	 */
-	DeallocateAllReservedConnections();
+	int deallocateCount = copyDest->reserveConnectionPerNode;
+	DeallocateReservedConnections(deallocateCount);
 
 	PG_TRY();
 	{

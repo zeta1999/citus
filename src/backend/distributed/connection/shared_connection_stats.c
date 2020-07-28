@@ -376,10 +376,10 @@ IncrementSharedConnectionCounter(const char *hostname, int port)
 
 /*
  * DecrementSharedConnectionCounter decrements the shared counter
- * for the given hostname and port.
+ * for the given hostname and port for the given count.
  */
 void
-DecrementSharedConnectionCounter(const char *hostname, int port)
+DecrementSharedConnectionCounter(int decrementCount, const char *hostname, int port)
 {
 	SharedConnStatsHashKey connKey;
 
@@ -421,9 +421,9 @@ DecrementSharedConnectionCounter(const char *hostname, int port)
 	}
 
 	/* we should never go below 0 */
-	Assert(connectionEntry->connectionCount > 0);
+	Assert(connectionEntry->connectionCount - decrementCount >= 0);
 
-	connectionEntry->connectionCount -= 1;
+	connectionEntry->connectionCount -= decrementCount;
 
 	if (connectionEntry->connectionCount == 0)
 	{

@@ -204,11 +204,11 @@ HasAlreadyReservedConnection(const char *hostName, int nodePort, Oid databaseOid
 
 
 /*
- * This function is intended to be called when the session has reserved connections
- * but not used them, and we are in a good position to get rid of them.
+ * DeallocateReservedConnections is intended to be called when the operation
+ * has reserved connection(s) but not used them.
  */
 void
-DeallocateAllReservedConnections(void)
+DeallocateReservedConnections(int count)
 {
 	HASH_SEQ_STATUS status;
 	ReservedConnectionCounterHashEntry *entry;
@@ -216,15 +216,32 @@ DeallocateAllReservedConnections(void)
 	hash_seq_init(&status, SessionLocalReservedConnectionCounters);
 	while ((entry = (ReservedConnectionCounterHashEntry *) hash_seq_search(&status)) != 0)
 	{
-		while (entry->reservedConnectionCount > 0)
+		int deallocateCountForEntry = count;
+		if (deallocateCountForEntry == DEALLOCATE_ALL)
 		{
-			DecrementSharedConnectionCounter(entry->key.hostname, entry->key.port);
-			entry->reservedConnectionCount--;
-
-			ereport(DEBUG5, (errmsg("Decrement shared reserved connection to node "
-									"%s:%d to %d", entry->key.hostname, entry->key.port,
-									entry->reservedConnectionCount)));
+			/*
+			 * The caller asked to deallocate all the reservation for all
+			 * the nodes. Each node might have different number of reserved
+			 * connections.
+			 */
+			deallocateCountForEntry = entry->reservedConnectionCount;
 		}
+		else
+		{
+			/* at most deallocate reservedConnectionCount */
+			deallocateCountForEntry = Min(count, entry->reservedConnectionCount);
+		}
+
+		Assert(deallocateCountForEntry >= 0);
+		DecrementSharedConnectionCounter(deallocateCountForEntry, entry->key.hostname,
+										 entry->key.port);
+
+		entry->reservedConnectionCount -= deallocateCountForEntry;
+		Assert(entry->reservedConnectionCount >= 0);
+
+		ereport(DEBUG5, (errmsg("Decrement shared reserved connection to node "
+								"%s:%d to %d", entry->key.hostname, entry->key.port,
+								entry->reservedConnectionCount)));
 
 		bool found = false;
 
@@ -274,11 +291,20 @@ DecrementReservedConnection(const char *hostName, int nodePort, Oid databaseOid)
  * ReserveSharedConnectionCounterForNodeListIfNeeded.
  */
 void
-ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded(void)
+ReserveSharedConnectionCounterForAllPrimaryNodesIfNeeded(int count)
 {
 	List *primaryNodeList = ActivePrimaryNonCoordinatorNodeList(NoLock);
 
-	ReserveSharedConnectionCounterForNodeListIfNeeded(primaryNodeList);
+	/*
+	 * We need to reserve connection one by one because the underlying
+	 * functions (e.g., WaitLoopForSharedConnection) do not implement
+	 * reserving multiple connections.
+	 */
+	int reserveIndex = 0;
+	for (; reserveIndex < count; ++reserveIndex)
+	{
+		ReserveSharedConnectionCounterForNodeListIfNeeded(primaryNodeList);
+	}
 }
 
 

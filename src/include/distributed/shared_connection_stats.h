@@ -24,7 +24,7 @@ extern void WakeupWaiterBackendsForSharedConnection(void);
 extern int GetMaxSharedPoolSize(void);
 extern bool TryToIncrementSharedConnectionCounter(const char *hostname, int port);
 extern void WaitLoopForSharedConnection(const char *hostname, int port);
-extern void DecrementSharedConnectionCounter(const char *hostname, int port);
+extern void DecrementSharedConnectionCounter(int count, const char *hostname, int port);
 extern void IncrementSharedConnectionCounter(const char *hostname, int port);
 extern int AdaptiveConnectionManagementFlag(int activeConnectionCount);
 
