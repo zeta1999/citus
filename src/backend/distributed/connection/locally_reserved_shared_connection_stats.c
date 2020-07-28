@@ -40,6 +40,7 @@
 #include "distributed/listutils.h"
 #include "distributed/locally_reserved_shared_connection_stats.h"
 #include "distributed/metadata_cache.h"
+#include "distributed/placement_connection.h"
 #include "distributed/shared_connection_stats.h"
 #include "distributed/tuplestore.h"
 #include "distributed/worker_manager.h"
