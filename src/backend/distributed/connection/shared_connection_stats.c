@@ -379,7 +379,7 @@ IncrementSharedConnectionCounter(const char *hostname, int port)
  * for the given hostname and port for the given count.
  */
 void
-DecrementSharedConnectionCounter(int decrementCount, const char *hostname, int port)
+DecrementSharedConnectionCounter(const char *hostname, int port, int decrementCount)
 {
 	SharedConnStatsHashKey connKey;
 

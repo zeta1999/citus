@@ -264,6 +264,13 @@ CoordinatedTransactionCallback(XactEvent event, void *arg)
 
 			ResetGlobalVariables();
 
+			/*
+			 * Make sure that we give the shared connections back to the shared
+			 * pool if any. This operation is a no-op if the reserved connections
+			 * are already given away.
+			 */
+			DeallocateReservedConnections(DEALLOCATE_ALL);
+
 			UnSetDistributedTransactionId();
 
 			/* empty the CommitContext to ensure we're not leaking memory */
@@ -315,6 +322,13 @@ CoordinatedTransactionCallback(XactEvent event, void *arg)
 			}
 
 			ResetGlobalVariables();
+
+			/*
+			 * Make sure that we give the shared connections back to the shared
+			 * pool if any. This operation is a no-op if the reserved connections
+			 * are already given away.
+			 */
+			DeallocateReservedConnections(DEALLOCATE_ALL);
 
 			/*
 			 * We reset these mainly for posterity. The only way we would normally
@@ -460,13 +474,6 @@ ResetGlobalVariables()
 	activeSetStmts = NULL;
 	CoordinatedTransactionUses2PC = false;
 	TransactionModifiedNodeMetadata = false;
-
-	/*
-	 * Make sure that we give the shared connections back to the shared
-	 * pool if any. This operation is a no-op if the reserved connections
-	 * are already given away.
-	 */
-	DeallocateReservedConnections(DEALLOCATE_ALL);
 	ResetWorkerErrorIndication();
 }
 

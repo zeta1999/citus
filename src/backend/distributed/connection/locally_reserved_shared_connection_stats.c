@@ -236,8 +236,8 @@ DeallocateReservedConnections(int count)
 		}
 
 		Assert(deallocateCountForEntry >= 0);
-		DecrementSharedConnectionCounter(deallocateCountForEntry, entry->key.hostname,
-										 entry->key.port);
+		DecrementSharedConnectionCounter(entry->key.hostname, entry->key.port,
+										 deallocateCountForEntry);
 
 		entry->reservedConnectionCount -= deallocateCountForEntry;
 		Assert(entry->reservedConnectionCount >= 0);

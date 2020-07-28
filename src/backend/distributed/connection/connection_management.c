@@ -1038,8 +1038,8 @@ CitusPQFinish(MultiConnection *connection)
 	if (connection->initilizationState >= POOL_STATE_COUNTER_INCREMENTED)
 	{
 		int decrementCount = 1;
-		DecrementSharedConnectionCounter(decrementCount, connection->hostname,
-										 connection->port);
+		DecrementSharedConnectionCounter(connection->hostname, connection->port,
+										 decrementCount);
 		connection->initilizationState = POOL_STATE_NOT_INITIALIZED;
 	}
 }
