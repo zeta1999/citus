@@ -30,9 +30,9 @@ INSERT INTO the_table (a, b, z) VALUES (2, 3, 4), (5, 6, 7);
 
 -- COPY is not possible in 2PC mode
 COPY the_table (a, b, z) FROM STDIN WITH CSV;
---10,10,10
---11,11,11
---\.
+10,10,10
+11,11,11
+\.
 
 -- 1PC is possible
 SET citus.multi_shard_commit_protocol TO '1pc';

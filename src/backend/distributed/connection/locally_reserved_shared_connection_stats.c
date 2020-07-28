@@ -40,6 +40,7 @@
 #include "distributed/listutils.h"
 #include "distributed/locally_reserved_shared_connection_stats.h"
 #include "distributed/metadata_cache.h"
+#include "distributed/multi_executor.h"
 #include "distributed/placement_connection.h"
 #include "distributed/shared_connection_stats.h"
 #include "distributed/tuplestore.h"
@@ -295,8 +296,14 @@ DecrementReservedConnection(const char *hostName, int nodePort, Oid databaseOid)
 void
 EnsurePrimaryNodesHaveReservedConnection(int count)
 {
-	/* prevent addition of new nodes */
-	List *primaryNodeList = ActivePrimaryNodeList(ShareLock);
+	/*
+	 * Prevent addition of new nodes. When WritableStandbyCoordinator is true, we
+	 * don't need to acquire the lock because node addition is not possible
+	 * anyway.
+	 */
+	LOCKMODE lockMode =
+		(RecoveryInProgress() && WritableStandbyCoordinator) ? NoLock : ShareLock;
+	List *primaryNodeList = ActivePrimaryNodeList(lockMode);
 
 	/*
 	 * We need to reserve connection one by one because the underlying
