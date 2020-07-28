@@ -363,21 +363,6 @@ ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList)
 			continue;
 		}
 
-		if (HasAlreadyReservedConnection(workerNode->workerName, workerNode->workerPort,
-										 MyDatabaseId))
-		{
-			/*
-			 * We already locally reserved a connection for this node. So, it is not
-			 * necessary to reserve again.
-			 *
-			 * One caveat here is that we are ignoring for which user we reserved the
-			 * connection. It is not important as Citus doesn't support switching
-			 * between users (https://github.com/citusdata/citus/pull/3869) and
-			 * we're clearing the reserved connections at the end of the transaction.
-			 */
-			continue;
-		}
-
 		/*
 		 * We are trying to be defensive here by ensuring that the required hash
 		 * table entry can be allocated. The main goal is that we don't want to be
