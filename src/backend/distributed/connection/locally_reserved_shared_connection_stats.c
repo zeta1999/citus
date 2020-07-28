@@ -75,8 +75,8 @@ typedef struct ReservedConnectionCounterHashEntry
 
 static void StoreAllReservedConnectionStats(Tuplestorestate *tupleStore,
 											TupleDesc tupleDescriptor);
-static void AllocateReservedConectionEntry(char *hostName, int nodePort, Oid databaseOid);
-static void IncrementReservedConnection(char *hostName, int nodePort, Oid databaseOid);
+static ReservedConnectionCounterHashEntry * AllocateOrGetReservedConectionEntry(
+	char *hostName, int nodePort, Oid databaseOid);
 static void ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList);
 static uint32 LocalConnectionReserveHashHash(const void *key, Size keysize);
 static int LocalConnectionReserveHashCompare(const void *a, const void *b, Size keysize);
@@ -200,42 +200,6 @@ HasAlreadyReservedConnection(const char *hostName, int nodePort, Oid databaseOid
 	}
 
 	return entry->reservedConnectionCount > 0;
-}
-
-
-/*
- * IncrementReservedConnection increments the reserved counter for the input node.
- *
- * The caller should ensure that the entry exists in the hash map, otherwise this
- * function throws an error.
- */
-static void
-IncrementReservedConnection(char *hostName, int nodePort, Oid databaseOid)
-{
-	ReservedConnectionCounterHashKey key;
-
-	strlcpy(key.hostname, hostName, MAX_NODE_LENGTH);
-	key.port = nodePort;
-	key.databaseOid = databaseOid;
-
-	bool found = false;
-	ReservedConnectionCounterHashEntry *entry =
-		(ReservedConnectionCounterHashEntry *) hash_search(
-			SessionLocalReservedConnectionCounters, &key, HASH_FIND, &found);
-
-	/* we should have already allocated */
-	if (!found)
-	{
-		ereport(ERROR, (errmsg("BUG: untracked reserved connection"),
-						errhint("Set citus.max_shared_pool_size TO -1 to "
-								"disable reserved connection counters")));
-	}
-
-	entry->reservedConnectionCount++;
-
-	ereport(DEBUG5, (errmsg("Incremented shared reserved connection to node "
-							"%s:%d to %d", entry->key.hostname, entry->key.port,
-							entry->reservedConnectionCount)));
 }
 
 
@@ -397,8 +361,10 @@ ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList)
 		 * pre-allocate all the necessary memory. In other words, it would never
 		 * throw out of memory error.
 		 */
-		AllocateReservedConectionEntry(workerNode->workerName, workerNode->workerPort,
-									   MyDatabaseId);
+		ReservedConnectionCounterHashEntry *hashEntry =
+			AllocateOrGetReservedConectionEntry(workerNode->workerName,
+												workerNode->workerPort,
+												MyDatabaseId);
 
 		/*
 		 * Increment the shared counter, we may need to wait if there are
@@ -407,8 +373,7 @@ ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList)
 		WaitLoopForSharedConnection(workerNode->workerName, workerNode->workerPort);
 
 		/* locally mark that we have one connection reserved */
-		IncrementReservedConnection(workerNode->workerName, workerNode->workerPort,
-									MyDatabaseId);
+		hashEntry->reservedConnectionCount++;
 	}
 }
 
@@ -418,8 +383,8 @@ ReserveSharedConnectionCounterForNodeListIfNeeded(List *nodeList)
  * map by HASH_ENTER. The function throws an error if it cannot allocate
  * the entry.
  */
-static void
-AllocateReservedConectionEntry(char *hostName, int nodePort, Oid databaseOid)
+static ReservedConnectionCounterHashEntry *
+AllocateOrGetReservedConectionEntry(char *hostName, int nodePort, Oid databaseOid)
 {
 	ReservedConnectionCounterHashKey key;
 
@@ -444,6 +409,8 @@ AllocateReservedConectionEntry(char *hostName, int nodePort, Oid databaseOid)
 								"%s:%d to %d", entry->key.hostname, entry->key.port,
 								entry->reservedConnectionCount)));
 	}
+
+	return entry;
 }
 
 
