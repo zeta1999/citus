@@ -2283,9 +2283,16 @@ CitusCopyDestReceiverStartup(DestReceiver *dest, int operation,
 	 * accessed. Since the order of the reservation is important, we need to
 	 * do it right here. For the details on why the order important, see
 	 * the function.
+	 *
+	 * For reference tables, we don't need to reserve connections because
+	 * connection reservation is only important when the command needs more
+	 * than one connection per node.
 	 */
-	int reserveCount = copyDest->reserveConnectionPerNode;
-	EnsurePrimaryNodesHaveReservedConnection(reserveCount);
+	if (PartitionMethod(tableId) != DISTRIBUTE_BY_NONE)
+	{
+		int reserveCount = copyDest->reserveConnectionPerNode;
+		EnsurePrimaryNodesHaveReservedConnection(reserveCount);
+	}
 }
 
 

@@ -102,13 +102,14 @@ step s1-copy:
 
 step s2-create-restore:
 	SELECT 1 FROM citus_create_restore_point('citus-test');
-
-?column?
-
-1
+ <waiting ...>
 step s1-commit:
 	COMMIT;
 
+step s2-create-restore: <... completed>
+?column?
+
+1
 
 starting permutation: s1-begin s1-recover s2-create-restore s1-commit
 create_reference_table
