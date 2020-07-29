@@ -573,6 +573,16 @@ static Value *
 GetAlterTriggerDependsTriggerNameValue(AlterObjectDependsStmt *alterTriggerDependsStmt)
 {
 	List *triggerObjectNameList = (List *) alterTriggerDependsStmt->object;
+
+	/*
+	 * Before standard process utility, we only have trigger name in "object"
+	 * list. However, standard process utility prepends that list with the
+	 * relationNameList retrieved from AlterObjectDependsStmt->RangeVar and
+	 * we call this method after standard process utility. So, for the further
+	 * usages, it is certain that the last element in "object" list will always
+	 * be the name of the trigger in either before or after standard process
+	 * utility.
+	 */
 	Value *triggerNameValue = llast(triggerObjectNameList);
 	return triggerNameValue;
 }
@@ -666,8 +676,8 @@ ErrorIfTriggerCommandExecutedForUnsupportedCitusTable(Oid relationId)
 
 
 /*
- * GetDropTriggerStmtRelation takes a DropStmt for a trigger
- * object and returns RangeVar for the relation that owns the trigger.
+ * GetDropTriggerStmtRelation takes a DropStmt for a trigger object and returns
+ * RangeVar for the relation that owns the trigger.
  */
 static RangeVar *
 GetDropTriggerStmtRelation(DropStmt *dropTriggerStmt)
@@ -679,8 +689,16 @@ GetDropTriggerStmtRelation(DropStmt *dropTriggerStmt)
 	List *targetObjectList = dropTriggerStmt->objects;
 	List *triggerObjectNameList = linitial(targetObjectList);
 
-	List *relationNameList = NIL;
-	SplitLastPointerElement(triggerObjectNameList, &relationNameList, NULL);
+	/*
+	 * The name list that identifies the trigger to be dropped looks like:
+	 * [catalogName, schemaName, relationName, triggerName], where, the first
+	 * two elements are optional. We should take all elements except the
+	 * triggerName to create the range var object that defines the owner
+	 * relation.
+	 */
+	int relationNameListLength = list_length(triggerObjectNameList) - 1;
+	List *relationNameList = list_truncate(list_copy(triggerObjectNameList),
+										   relationNameListLength);
 
 	return makeRangeVarFromNameList(relationNameList);
 }
@@ -726,29 +744,27 @@ ExtractDropStmtTriggerAndRelationName(DropStmt *dropTriggerStmt, char **triggerN
 
 	List *targetObjectList = dropTriggerStmt->objects;
 	List *triggerObjectNameList = linitial(targetObjectList);
+	int objectNameListLength = list_length(triggerObjectNameList);
 
-	List *relationNameList = NIL;
-	Value *triggerNameValue = NULL;
-	SplitLastPointerElement(triggerObjectNameList, &relationNameList,
-							(void **) &triggerNameValue);
-
-	if (triggerName)
+	if (triggerName != NULL)
 	{
-		*triggerName = strVal(triggerNameValue);
+		int triggerNameindex = objectNameListLength - 1;
+		*triggerName = strVal(list_nth(triggerObjectNameList, triggerNameindex));
 	}
 
-	if (relationName)
+	if (relationName != NULL)
 	{
-		Value *relationNameValue = llast(relationNameList);
-		*relationName = strVal(relationNameValue);
+		int relationNameIndex = objectNameListLength - 2;
+		*relationName = strVal(list_nth(triggerObjectNameList, relationNameIndex));
 	}
 }
 
 
 /*
- * ErrorIfDropStmtDropsMultipleTriggers errors out if given drop trigger command
- * drops more than one triggers. Actually, this can't be the case as postgres
- * doesn't support dropping multiple triggers, but we should be on the safe side.
+ * ErrorIfDropStmtDropsMultipleTriggers errors out if given drop trigger
+ * command drops more than one triggers. Actually, this can't be the case
+ * as postgres doesn't support dropping multiple triggers, but we should
+ * be on the safe side.
  */
 static void
 ErrorIfDropStmtDropsMultipleTriggers(DropStmt *dropTriggerStmt)
@@ -778,7 +794,7 @@ CitusLocalTableTriggerCommandDDLJob(Oid relationId, char *triggerName,
 	if (!triggerName)
 	{
 		/*
-		 * ENABLE/DISABLE TRIGGER ALL/USER commands does not specify trigger
+		 * ENABLE/DISABLE TRIGGER ALL/USER commands do not specify trigger
 		 * name.
 		 */
 		ddlJob->taskList = DDLTaskList(relationId, queryString);
