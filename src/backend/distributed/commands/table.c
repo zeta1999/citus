@@ -1207,14 +1207,8 @@ ErrorIfUnsupportedAlterTableStmt(AlterTableStmt *alterTableStatement)
 									errhint("You can issue each subcommand separately")));
 				}
 
-				if (!IsCitusLocalTable(relationId))
-				{
-					const char *relationName = alterTableStatement->relation->relname;
-					ereport(ERROR, (errmsg("cannot execute ALTER TABLE ENABLE/DISABLE "
-										   "TRIGGER command for relation \"%s\" because "
-										   "it is either a distributed table or a "
-										   "reference table", relationName)));
-				}
+				ErrorOutForTriggerCommandIfNotCitusLocalTable(relationId);
+
 				break;
 			}
 

@@ -315,7 +315,7 @@ extern void AlterTriggerDependsEventExtendNames(
 	AlterObjectDependsStmt *alterTriggerDependsStmt,
 	char *schemaName, uint64 shardId);
 extern List * PreprocessDropTriggerStmt(Node *node, const char *queryString);
-extern void ErrorIfTriggerCommandExecutedForUnsupportedCitusTable(Oid relationId);
+extern void ErrorOutForTriggerCommandIfNotCitusLocalTable(Oid relationId);
 extern void DropTriggerEventExtendNames(DropStmt *dropTriggerStmt, char *schemaName,
 										uint64 shardId);
 extern List * CitusLocalTableTriggerCommandDDLJob(Oid relationId, char *triggerName,

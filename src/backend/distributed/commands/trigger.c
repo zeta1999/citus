@@ -371,7 +371,7 @@ ErrorIfUnsupportedCreateTriggerCommand(CreateTrigStmt *createTriggerStmt)
 	}
 
 	EnsureCoordinator();
-	ErrorIfTriggerCommandExecutedForUnsupportedCitusTable(relationId);
+	ErrorOutForTriggerCommandIfNotCitusLocalTable(relationId);
 }
 
 
@@ -450,7 +450,7 @@ ErrorIfUnsupportedAlterTriggerRenameCommand(RenameStmt *renameTriggerStmt)
 	}
 
 	EnsureCoordinator();
-	ErrorIfTriggerCommandExecutedForUnsupportedCitusTable(relationId);
+	ErrorOutForTriggerCommandIfNotCitusLocalTable(relationId);
 }
 
 
@@ -537,7 +537,7 @@ ErrorIfUnsupportedAlterTriggerDependsCommand(
 	}
 
 	EnsureCoordinator();
-	ErrorIfTriggerCommandExecutedForUnsupportedCitusTable(relationId);
+	ErrorOutForTriggerCommandIfNotCitusLocalTable(relationId);
 }
 
 
@@ -651,17 +651,17 @@ ErrorIfUnsupportedDropTriggerCommand(DropStmt *dropTriggerStmt)
 	}
 
 	EnsureCoordinator();
-	ErrorIfTriggerCommandExecutedForUnsupportedCitusTable(relationId);
+	ErrorOutForTriggerCommandIfNotCitusLocalTable(relationId);
 }
 
 
 /*
- * ErrorIfTriggerCommandExecutedForUnsupportedCitusTable is an helper function
+ * ErrorOutForTriggerCommandIfNotCitusLocalTable is an helper function
  * to error out for unsupported trigger commands depending on the citus table
  * type.
  */
 void
-ErrorIfTriggerCommandExecutedForUnsupportedCitusTable(Oid relationId)
+ErrorOutForTriggerCommandIfNotCitusLocalTable(Oid relationId)
 {
 	if (IsCitusLocalTable(relationId))
 	{
@@ -670,8 +670,8 @@ ErrorIfTriggerCommandExecutedForUnsupportedCitusTable(Oid relationId)
 
 	char *relationName = get_rel_name(relationId);
 	ereport(ERROR, (errmsg("cannot execute command on table \"%s\" because "
-						   "triggers are not supported for distributed and "
-						   "reference tables", relationName)));
+						   "triggers are only supported for citus local tables",
+						   relationName)));
 }
 
 
