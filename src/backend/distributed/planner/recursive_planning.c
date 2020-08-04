@@ -1071,9 +1071,9 @@ IsLocalTableRTE(Node *node)
 	{
 		return false;
 	}
-
+#include "distributed/create_citus_local_table.h"
 	Oid relationId = rangeTableEntry->relid;
-	if (IsCitusTable(relationId))
+	if (IsCitusTable(relationId) && !IsCitusLocalTable(relationId))
 	{
 		return false;
 	}

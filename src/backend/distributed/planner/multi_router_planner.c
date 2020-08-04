@@ -576,11 +576,33 @@ ModifyPartialQuerySupported(Query *queryTree, bool multiShardQuery,
 
 	Oid distributedTableId = ModifyQueryResultRelationId(queryTree);
 	*distributedTableIdOutput = distributedTableId;
-	if (!IsCitusTable(distributedTableId))
+
+	bool containsPostgresLocalTable =
+		FindNodeCheck((Node *) queryTree, IsLocalTableRTE);
+	bool containsCitusTable = FindNodeCheck((Node *) queryTree, IsCitusTableRTE);
+
+	if (containsPostgresLocalTable && containsCitusTable)
 	{
+		/* TODO: error hint:  use  citus local tables */
 		return DeferredError(ERRCODE_FEATURE_NOT_SUPPORTED,
 							 "cannot plan modifications of local tables involving "
 							 "distributed tables",
+							 NULL, NULL);
+	}
+
+
+
+	bool containsDistributedTable = FindNodeCheck((Node *) queryTree, IsDistributedTableRTE);
+	bool containsReferenceTable = FindNodeCheck((Node *) queryTree, IsReferenceTableRTE);
+	bool containsCitusLocalTable = FindNodeCheck((Node *) queryTree, IsCitusLocalTableRTE);
+
+
+	if ((containsDistributedTable || containsReferenceTable) && containsCitusLocalTable)
+	{
+		/* TODO: error hint:  use CTEs/subqueries */
+		return DeferredError(ERRCODE_FEATURE_NOT_SUPPORTED,
+							 "cannot plan modifications of citus local tables involving "
+							 "distributed or reference tables",
 							 NULL, NULL);
 	}
 
@@ -3279,6 +3301,9 @@ ExtractInsertPartitionKeyValue(Query *query)
 }
 
 
+#include "distributed/create_citus_local_table.h"
+
+
 /*
  * MultiRouterPlannableQuery checks if given select query is router plannable,
  * setting distributedPlan->planningError if not.
@@ -3328,6 +3353,12 @@ MultiRouterPlannableQuery(Query *query)
 			if (!IsCitusTable(distributedTableId))
 			{
 				hasLocalTable = true;
+				continue;
+			}
+			else if (IsCitusLocalTable(distributedTableId))
+			{
+				hasLocalTable = true;
+				elog(DEBUG4,  "Router planner finds a citus local table");
 				continue;
 			}
 

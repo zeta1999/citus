@@ -114,7 +114,12 @@ InsertSelectIntoCitusTable(Query *query)
 	if (insertSelectQuery)
 	{
 		RangeTblEntry *insertRte = ExtractResultRelationRTE(query);
-		if (IsCitusTable(insertRte->relid))
+#include "distributed/create_citus_local_table.h"
+		if (IsCitusLocalTable(insertRte->relid))
+		{
+			return false;
+		}
+		else if (IsCitusTable(insertRte->relid))
 		{
 			return true;
 		}
@@ -129,6 +134,7 @@ InsertSelectIntoCitusTable(Query *query)
  * into local table. Note that query must be a sample of INSERT INTO ... SELECT
  * type of query.
  */
+#include "distributed/create_citus_local_table.h"
 bool
 InsertSelectIntoLocalTable(Query *query)
 {
@@ -137,7 +143,7 @@ InsertSelectIntoLocalTable(Query *query)
 	if (insertSelectQuery)
 	{
 		RangeTblEntry *insertRte = ExtractResultRelationRTE(query);
-		if (!IsCitusTable(insertRte->relid))
+		if (!IsCitusTable(insertRte->relid) || IsCitusLocalTable(insertRte->relid))
 		{
 			return true;
 		}
@@ -550,6 +556,14 @@ DistributedInsertSelectSupported(Query *queryTree, RangeTblEntry *insertRte,
 	Query *subquery = subqueryRte->subquery;
 
 	if (!NeedsDistributedPlanning(subquery))
+	{
+		return DeferredError(ERRCODE_FEATURE_NOT_SUPPORTED,
+							 "distributed INSERT ... SELECT can only select from "
+							 "distributed tables",
+							 NULL, NULL);
+	}
+
+	if (FindNodeCheck((Node *) subquery, IsCitusLocalTableRTE))
 	{
 		return DeferredError(ERRCODE_FEATURE_NOT_SUPPORTED,
 							 "distributed INSERT ... SELECT can only select from "

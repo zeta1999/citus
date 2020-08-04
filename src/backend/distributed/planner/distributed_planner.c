@@ -900,23 +900,7 @@ CreateDistributedPlan(uint64 planId, Query *originalQuery, Query *query, ParamLi
 		Oid targetRelationId = ModifyQueryResultRelationId(query);
 		EnsurePartitionTableNotReplicated(targetRelationId);
 
-		if (InsertSelectIntoCitusTable(originalQuery))
-		{
-			if (hasUnresolvedParams)
-			{
-				/*
-				 * Unresolved parameters can cause performance regressions in
-				 * INSERT...SELECT when the partition column is a parameter
-				 * because we don't perform any additional pruning in the executor.
-				 */
-				return NULL;
-			}
-
-			distributedPlan =
-				CreateInsertSelectPlan(planId, originalQuery, plannerRestrictionContext,
-									   boundParams);
-		}
-		else if (InsertSelectIntoLocalTable(originalQuery))
+		if (InsertSelectIntoLocalTable(originalQuery))
 		{
 			if (hasUnresolvedParams)
 			{
@@ -931,6 +915,22 @@ CreateDistributedPlan(uint64 planId, Query *originalQuery, Query *query, ParamLi
 				CreateInsertSelectIntoLocalTablePlan(planId, originalQuery, boundParams,
 													 hasUnresolvedParams,
 													 plannerRestrictionContext);
+		}
+		else if (InsertSelectIntoCitusTable(originalQuery))
+		{
+			if (hasUnresolvedParams)
+			{
+				/*
+				 * Unresolved parameters can cause performance regressions in
+				 * INSERT...SELECT when the partition column is a parameter
+				 * because we don't perform any additional pruning in the executor.
+				 */
+				return NULL;
+			}
+
+			distributedPlan =
+				CreateInsertSelectPlan(planId, originalQuery, plannerRestrictionContext,
+									   boundParams);
 		}
 		else
 		{

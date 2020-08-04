@@ -384,6 +384,15 @@ IsCitusTableRTE(Node *node)
 }
 
 
+#include "distributed/create_citus_local_table.h"
+bool
+IsLocalTableRTE(Node *node)
+{
+	Oid relationId = NodeTryGetRteRelid(node);
+	return relationId != InvalidOid && (!IsCitusTable(relationId));
+}
+
+
 /*
  * IsDistributedTableRTE gets a node and returns true if the node
  * is a range table relation entry that points to a distributed relation,
@@ -407,6 +416,23 @@ IsReferenceTableRTE(Node *node)
 {
 	Oid relationId = NodeTryGetRteRelid(node);
 	return relationId != InvalidOid && IsReferenceTable(relationId);
+}
+
+
+
+
+#include "distributed/create_citus_local_table.h"
+
+
+/*
+ * IsCitusLocalTableRTE gets a node and returns true if the node
+ * is a range table relation entry that points to a citus local table.
+ */
+bool
+IsCitusLocalTableRTE(Node *node)
+{
+	Oid relationId = NodeTryGetRteRelid(node);
+	return relationId != InvalidOid && IsCitusLocalTable(relationId);
 }
 
 
@@ -976,6 +1002,15 @@ DeferErrorIfQueryNotSupported(Query *queryTree)
 	{
 		preconditionsSatisfied = false;
 		errorMessage = "subquery in OFFSET is not supported in multi-shard queries";
+	}
+
+	List *rangeTableList = queryTree->rtable;
+	if (FindNodeCheckInRangeTableList(rangeTableList, IsCitusLocalTableRTE))
+	{
+		preconditionsSatisfied = false;
+		errorMessage = "Local tables cannot be used in distributed queries";
+		errorHint = "Relation XXX is a Citus local table, and Citus local tables "
+					"can be used with reference tables";
 	}
 
 	/* finally check and error out if not satisfied */
