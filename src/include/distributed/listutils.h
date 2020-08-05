@@ -68,16 +68,6 @@
 		 var ## CellDoNotUse = lnext(var ## CellDoNotUse))
 
 
-/*
- * Routines to simplify writing assertions about the type of a list; a
- * NIL list is considered to be an empty list of any type.
- * Copied from nodes/list.c.
- */
-#define IsPointerList(l) ((l) == NIL || IsA((l), List))
-#define IsIntegerList(l) ((l) == NIL || IsA((l), IntList))
-#define IsOidList(l) ((l) == NIL || IsA((l), OidList))
-
-
 /* utility functions declaration shared within this module */
 extern List * SortList(List *pointerList,
 					   int (*ComparisonFunction)(const void *, const void *));
