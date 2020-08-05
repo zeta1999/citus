@@ -310,9 +310,15 @@ ALTER TABLE distributed_table ADD CONSTRAINT fkey_dist_to_c FOREIGN KEY(a) refer
 
 -- between citus local tables and local tables
 ALTER TABLE citus_local_table_1 ADD CONSTRAINT fkey_c_to_local FOREIGN KEY(a) references local_table(a);
-ALTER TABLE local_table ADD CONSTRAINT fkey_local_to_c FOREIGN KEY(a) references citus_local_table_1(a);
-ALTER TABLE local_table ADD COLUMN b int references citus_local_table_1(a);
-CREATE TABLE local_table_4 (a int references citus_local_table_1(a));
+ALTER TABLE local_table
+  ADD CONSTRAINT fkey_local_to_c FOREIGN KEY(a) references citus_local_table_1(a),
+  ADD CONSTRAINT fkey_self FOREIGN KEY(a) references local_table(a);
+ALTER TABLE local_table
+  ADD COLUMN b int references citus_local_table_1(a),
+  ADD COLUMN c int references local_table(a);
+CREATE TABLE local_table_4 (
+  a int unique references citus_local_table_1(a),
+  b int references local_table_4(a));
 
 ALTER TABLE citus_local_table_1 ADD COLUMN b int NOT NULL;
 -- show that we added column with NOT NULL

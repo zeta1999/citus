@@ -655,9 +655,8 @@ ErrorIfUnsupportedDropTriggerCommand(DropStmt *dropTriggerStmt)
 
 
 /*
- * ErrorOutForTriggerCommandIfNotCitusLocalTable is an helper function
- * to error out for unsupported trigger commands depending on the citus table
- * type.
+ * ErrorOutForTriggerCommandIfNotCitusLocalTable is a helper function to error
+ * out for unsupported trigger commands depending on the citus table type.
  */
 void
 ErrorOutForTriggerCommandIfNotCitusLocalTable(Oid relationId)
@@ -667,10 +666,7 @@ ErrorOutForTriggerCommandIfNotCitusLocalTable(Oid relationId)
 		return;
 	}
 
-	char *relationName = get_rel_name(relationId);
-	ereport(ERROR, (errmsg("cannot execute command on table \"%s\" because "
-						   "triggers are only supported for citus local tables",
-						   relationName)));
+	ereport(ERROR, (errmsg("triggers are only supported for citus local tables")));
 }
 
 
@@ -761,7 +757,7 @@ ExtractDropStmtTriggerAndRelationName(DropStmt *dropTriggerStmt, char **triggerN
 
 /*
  * ErrorIfDropStmtDropsMultipleTriggers errors out if given drop trigger
- * command drops more than one triggers. Actually, this can't be the case
+ * command drops more than one trigger. Actually, this can't be the case
  * as postgres doesn't support dropping multiple triggers, but we should
  * be on the safe side.
  */
@@ -812,8 +808,9 @@ CitusLocalTableTriggerCommandDDLJob(Oid relationId, char *triggerName,
 		return NIL;
 	}
 
-	/* we don't have truncate triggers on shard relations */
 	int16 triggerType = GetTriggerTypeById(triggerId);
+
+	/* we don't have truncate triggers on shard relations */
 	if (!TRIGGER_FOR_TRUNCATE(triggerType))
 	{
 		ddlJob->taskList = DDLTaskList(relationId, queryString);

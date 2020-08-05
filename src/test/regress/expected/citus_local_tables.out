@@ -388,11 +388,17 @@ ERROR:  cannot create foreign key constraint since relations are not colocated o
 -- between citus local tables and local tables
 ALTER TABLE citus_local_table_1 ADD CONSTRAINT fkey_c_to_local FOREIGN KEY(a) references local_table(a);
 ERROR:  cannot create foreign key constraint as "local_table" is a postgres local table
-ALTER TABLE local_table ADD CONSTRAINT fkey_local_to_c FOREIGN KEY(a) references citus_local_table_1(a);
+ALTER TABLE local_table
+  ADD CONSTRAINT fkey_local_to_c FOREIGN KEY(a) references citus_local_table_1(a),
+  ADD CONSTRAINT fkey_self FOREIGN KEY(a) references local_table(a);
 ERROR:  cannot create foreign key constraint as "local_table" is a postgres local table
-ALTER TABLE local_table ADD COLUMN b int references citus_local_table_1(a);
+ALTER TABLE local_table
+  ADD COLUMN b int references citus_local_table_1(a),
+  ADD COLUMN c int references local_table(a);
 ERROR:  cannot create foreign key constraint as "local_table" is a postgres local table
-CREATE TABLE local_table_4 (a int references citus_local_table_1(a));
+CREATE TABLE local_table_4 (
+  a int unique references citus_local_table_1(a),
+  b int references local_table_4(a));
 ERROR:  cannot create table "local_table_4" as it has a foreign key to a citus local table
 ALTER TABLE citus_local_table_1 ADD COLUMN b int NOT NULL;
 NOTICE:  executing the command locally: SELECT worker_apply_shard_ddl_command (1504027, 'citus_local_tables_test_schema', 'ALTER TABLE citus_local_table_1 ADD COLUMN b int NOT NULL;')

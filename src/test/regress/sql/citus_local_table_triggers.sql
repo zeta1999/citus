@@ -121,7 +121,7 @@ CREATE SCHEMA "interesting!schema";
 CREATE TABLE "interesting!schema"."citus_local!_table"(value int);
 SELECT create_citus_local_table('"interesting!schema"."citus_local!_table"');
 
--- below view is an helper to print triggers on both shell relation and
+-- below view is a helper to print triggers on both shell relation and
 -- shard relation for "citus_local_table"
 CREATE VIEW citus_local_table_triggers AS
     SELECT tgname, tgrelid::regclass, tgenabled

@@ -41,6 +41,9 @@
 	((x) == FKCONSTR_ACTION_NOACTION || (x) == FKCONSTR_ACTION_RESTRICT)
 
 
+typedef bool (*CheckRelationFunc)(Oid);
+
+
 /* Local functions forward declarations */
 static bool HeapTupleOfForeignConstraintIncludesColumn(HeapTuple heapTuple,
 													   Oid relationId,
@@ -58,7 +61,7 @@ static Oid get_relation_constraint_oid_compat(HeapTuple heapTuple);
 static List * GetForeignKeyOidsToCitusLocalTables(Oid relationId);
 static List * GetForeignKeyOidsToReferenceTables(Oid relationId);
 static List * FilterForeignKeyOidListByReferencedTable(List *foreignKeyOidList,
-													   bool (*checkFunction)(Oid));
+													   CheckRelationFunc checkRelationFunc);
 
 /*
  * ConstraintIsAForeignKeyToReferenceTable checks if the given constraint is a
@@ -223,8 +226,8 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 		}
 
 		/*
-		 * Foreign keys from none dist. tables to distributed tables are not
-		 * supported.
+		 * Foreign keys from citus local tables or reference tables to distributed
+		 * tables are not supported.
 		 */
 		if (referencingIsCitusLocalOrRefTable && !referencedIsCitusLocalOrRefTable)
 		{
@@ -350,7 +353,7 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 
 
 /*
- * ErrorOutForFKeyBetweenPostgresAndCitusLocalTable is an helper function to
+ * ErrorOutForFKeyBetweenPostgresAndCitusLocalTable is a helper function to
  * error out for foreign keys between postgres local tables and citus local
  * tables.
  */
@@ -362,8 +365,8 @@ ErrorOutForFKeyBetweenPostgresAndCitusLocalTable(Oid localTableId)
 					errmsg("cannot create foreign key constraint as \"%s\" is "
 						   "a postgres local table", localTableName),
 					errhint("first create a citus local table from the postgres "
-							"local table with create_citus_local_table udf "
-							"and re-execute the ALTER TABLE command")));
+							"local table using SELECT create_citus_local_table('%s') "
+							"and re-execute the ALTER TABLE command", localTableName)));
 }
 
 
@@ -635,7 +638,7 @@ GetForeignKeyOidsToReferenceTables(Oid relationId)
  */
 static List *
 FilterForeignKeyOidListByReferencedTable(List *foreignKeyOidList,
-										 bool (*checkFunction)(Oid))
+										 CheckRelationFunc checkRelationFunc)
 {
 	List *filteredFKeyOidList = NIL;
 
@@ -646,7 +649,7 @@ FilterForeignKeyOidListByReferencedTable(List *foreignKeyOidList,
 		Form_pg_constraint constraintForm = (Form_pg_constraint) GETSTRUCT(heapTuple);
 
 		Oid referencedTableOid = constraintForm->confrelid;
-		if (checkFunction(referencedTableOid))
+		if (checkRelationFunc(referencedTableOid))
 		{
 			filteredFKeyOidList = lappend_oid(filteredFKeyOidList, foreignKeyOid);
 		}

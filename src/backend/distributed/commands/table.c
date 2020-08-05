@@ -213,9 +213,9 @@ ErrorIfTableHasForeignKeyToCitusLocalTable(Oid relationId)
 						   "to a citus local table", relationName),
 					errhint("First create the table without foreign keys to "
 							"citus local tables and then convert your table to "
-							"a citus local table with create_citus_local_table "
-							"udf, then define the foreign key with ALTER TABLE "
-							"command.")));
+							"a citus local table using SELECT create_citus_local_table('%s'), "
+							"then define the foreign key with ALTER TABLE "
+							"command.", relationName)));
 }
 
 
