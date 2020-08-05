@@ -42,6 +42,10 @@
 
 
 /* Local functions forward declarations for unsupported command checks */
+static void ErrorIfAlterTableDefinesFKeyFromPostgresToCitusLocalTable(
+	AlterTableStmt *alterTableStatement);
+static List * GetAlterTableStmtFKeyConstraintList(AlterTableStmt *alterTableStatement);
+static List * GetAlterTableCommandFKeyConstraintList(AlterTableCmd *command);
 static bool AlterTableCommandTypeIsTrigger(AlterTableType alterTableType);
 static void ErrorIfUnsupportedAlterTableStmt(AlterTableStmt *alterTableStatement);
 static void ErrorIfCitusLocalTablePartitionCommand(AlterTableCmd *alterTableCmd,
@@ -330,6 +334,15 @@ PreprocessAlterTableStmt(Node *node, const char *alterTableCommand)
 		leftRelationId = IndexGetRelation(leftRelationId, missingOk);
 	}
 
+	/*
+	 * Normally, we would do this check in ErrorIfUnsupportedForeignConstraintExists
+	 * in post process step. However, we skip doing error checks in post process if
+	 * this pre process returns NIL -and this method returns NIL if the left relation
+	 * is a postgres table. So, we need to error out for foreign keys from postgres
+	 * tables to citus local tables here.
+	 */
+	ErrorIfAlterTableDefinesFKeyFromPostgresToCitusLocalTable(alterTableStatement);
+
 	bool referencingIsLocalTable = !IsCitusTable(leftRelationId);
 	if (referencingIsLocalTable)
 	{
@@ -516,6 +529,104 @@ PreprocessAlterTableStmt(Node *node, const char *alterTableCommand)
 	List *ddlJobs = list_make1(ddlJob);
 
 	return ddlJobs;
+}
+
+
+/*
+ * ErrorIfAlterTableDefinesFKeyFromPostgresToCitusLocalTable errors out if
+ * given ALTER TABLE statement defines foreign key from a postgres local table
+ * to a citus local table.
+ */
+static void
+ErrorIfAlterTableDefinesFKeyFromPostgresToCitusLocalTable(
+	AlterTableStmt *alterTableStatement)
+{
+	List *commandList = alterTableStatement->cmds;
+
+	LOCKMODE lockmode = AlterTableGetLockLevel(commandList);
+	Oid relationId = AlterTableLookupRelation(alterTableStatement, lockmode);
+
+	if (IsCitusTable(relationId))
+	{
+		/* left relation is not a postgres local table, */
+		return;
+	}
+
+	List *alterTableFKeyConstraints =
+		GetAlterTableStmtFKeyConstraintList(alterTableStatement);
+	Constraint *constraint = NULL;
+	foreach_ptr(constraint, alterTableFKeyConstraints)
+	{
+		Oid rightRelationId = RangeVarGetRelid(constraint->pktable, lockmode,
+											   alterTableStatement->missing_ok);
+		if (IsCitusLocalTable(rightRelationId))
+		{
+			ErrorOutForFKeyBetweenPostgresAndCitusLocalTable(relationId);
+		}
+	}
+}
+
+
+/*
+ * GetAlterTableStmtFKeyConstraintList returns a list of Constraint objects for
+ * the foreign keys that given ALTER TABLE statement defines.
+ */
+static List *
+GetAlterTableStmtFKeyConstraintList(AlterTableStmt *alterTableStatement)
+{
+	List *alterTableFKeyConstraintList = NIL;
+
+	List *commandList = alterTableStatement->cmds;
+	AlterTableCmd *command = NULL;
+	foreach_ptr(command, commandList)
+	{
+		List *commandFKeyConstraintList = GetAlterTableCommandFKeyConstraintList(command);
+		alterTableFKeyConstraintList = list_concat(alterTableFKeyConstraintList,
+												   commandFKeyConstraintList);
+	}
+
+	return alterTableFKeyConstraintList;
+}
+
+
+/*
+ * GetAlterTableCommandFKeyConstraintList returns a list of Constraint objects
+ * for the foreign keys that given ALTER TABLE subcommand defines. Note that
+ * this is only possible if it is an:
+ *  - ADD CONSTRAINT subcommand (explicitly defines) or,
+ *  - ADD COLUMN subcommand (implicitly defines by adding a new column that
+ *    references to another table.
+ */
+static List *
+GetAlterTableCommandFKeyConstraintList(AlterTableCmd *command)
+{
+	List *fkeyConstraintList = NIL;
+
+	AlterTableType alterTableType = command->subtype;
+	if (alterTableType == AT_AddConstraint)
+	{
+		Constraint *constraint = (Constraint *) command->def;
+		if (constraint->contype == CONSTR_FOREIGN)
+		{
+			fkeyConstraintList = lappend(fkeyConstraintList, constraint);
+		}
+	}
+	else if (alterTableType == AT_AddColumn)
+	{
+		ColumnDef *columnDefinition = (ColumnDef *) command->def;
+		List *columnConstraints = columnDefinition->constraints;
+
+		Constraint *constraint = NULL;
+		foreach_ptr(constraint, columnConstraints)
+		{
+			if (constraint->contype == CONSTR_FOREIGN)
+			{
+				fkeyConstraintList = lappend(fkeyConstraintList, constraint);
+			}
+		}
+	}
+
+	return fkeyConstraintList;
 }
 
 
