@@ -55,7 +55,10 @@ static void ForeignConstraintFindDistKeys(HeapTuple pgConstraintTuple,
 										  int *referencedAttrIndex);
 static List * GetForeignConstraintCommandsInternal(Oid relationId, int flags);
 static Oid get_relation_constraint_oid_compat(HeapTuple heapTuple);
+static List * GetForeignKeyOidsToCitusLocalTables(Oid relationId);
 static List * GetForeignKeyOidsToReferenceTables(Oid relationId);
+static List * FilterForeignKeyOidListByReferencedTable(List *foreignKeyOidList,
+													   bool (*checkFunction)(Oid));
 
 /*
  * ConstraintIsAForeignKeyToReferenceTable checks if the given constraint is a
@@ -567,6 +570,35 @@ get_relation_constraint_oid_compat(HeapTuple heapTuple)
 
 
 /*
+ * HasForeignKeyToCitusLocalTable function returns true if any of the foreign
+ * key constraints on the relation with relationId references to a citus local
+ * table.
+ */
+bool
+HasForeignKeyToCitusLocalTable(Oid relationId)
+{
+	List *foreignKeyOidList = GetForeignKeyOidsToCitusLocalTables(relationId);
+	return list_length(foreignKeyOidList) > 0;
+}
+
+
+/*
+ * GetForeignKeyOidsToCitusLocalTables function returns list of OIDs for the
+ * foreign key constraints on the given relationId that are referencing to
+ * citus local tables.
+ */
+static List *
+GetForeignKeyOidsToCitusLocalTables(Oid relationId)
+{
+	int flags = INCLUDE_REFERENCING_CONSTRAINTS;
+	List *foreignKeyOidList = GetForeignKeyOids(relationId, flags);
+	List *fKeyOidsToCitusLocalTables =
+		FilterForeignKeyOidListByReferencedTable(foreignKeyOidList, IsCitusLocalTable);
+	return fKeyOidsToCitusLocalTables;
+}
+
+
+/*
  * HasForeignKeyToReferenceTable function returns true if any of the foreign
  * key constraints on the relation with relationId references to a reference
  * table.
@@ -589,32 +621,40 @@ static List *
 GetForeignKeyOidsToReferenceTables(Oid relationId)
 {
 	int flags = INCLUDE_REFERENCING_CONSTRAINTS;
-	List *foreignKeyOids = GetForeignKeyOids(relationId, flags);
+	List *foreignKeyOidList = GetForeignKeyOids(relationId, flags);
+	List *fKeyOidsToReferenceTables =
+		FilterForeignKeyOidListByReferencedTable(foreignKeyOidList, IsReferenceTable);
+	return fKeyOidsToReferenceTables;
+}
 
-	List *fkeyOidsToReferenceTables = NIL;
+
+/*
+ * FilterForeignKeyOidListByReferencedTable takes a list of foreign key OIDs and
+ * a predicate function to filter the foreign key OIDs that the predicate function
+ * returns true when referenced relation is passed to that function.
+ */
+static List *
+FilterForeignKeyOidListByReferencedTable(List *foreignKeyOidList,
+										 bool (*checkFunction)(Oid))
+{
+	List *filteredFKeyOidList = NIL;
 
 	Oid foreignKeyOid = InvalidOid;
-	foreach_oid(foreignKeyOid, foreignKeyOids)
+	foreach_oid(foreignKeyOid, foreignKeyOidList)
 	{
-		HeapTuple heapTuple =
-			SearchSysCache1(CONSTROID, ObjectIdGetDatum(foreignKeyOid));
-
-		Assert(HeapTupleIsValid(heapTuple));
-
+		HeapTuple heapTuple = SearchSysCache1(CONSTROID, ObjectIdGetDatum(foreignKeyOid));
 		Form_pg_constraint constraintForm = (Form_pg_constraint) GETSTRUCT(heapTuple);
 
 		Oid referencedTableOid = constraintForm->confrelid;
-
-		if (IsReferenceTable(referencedTableOid))
+		if (checkFunction(referencedTableOid))
 		{
-			fkeyOidsToReferenceTables = lappend_oid(fkeyOidsToReferenceTables,
-													foreignKeyOid);
+			filteredFKeyOidList = lappend_oid(filteredFKeyOidList, foreignKeyOid);
 		}
 
 		ReleaseSysCache(heapTuple);
 	}
 
-	return fkeyOidsToReferenceTables;
+	return filteredFKeyOidList;
 }
 
 

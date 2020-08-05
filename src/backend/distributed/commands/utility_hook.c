@@ -545,15 +545,11 @@ multi_ProcessUtility(PlannedStmt *pstmt,
 		}
 	}
 
-	/*
-	 * We only process CREATE TABLE ... PARTITION OF commands in the function below
-	 * to handle the case when user creates a table as a partition of distributed table.
-	 */
 	if (IsA(parsetree, CreateStmt))
 	{
 		CreateStmt *createStatement = (CreateStmt *) parsetree;
 
-		PostprocessCreateTableStmtPartitionOf(createStatement, queryString);
+		PostprocessCreateTableStmt(createStatement, queryString);
 	}
 
 	/*

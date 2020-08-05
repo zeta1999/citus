@@ -42,6 +42,7 @@
 
 
 /* Local functions forward declarations for unsupported command checks */
+static void ErrorIfTableHasForeignKeyToCitusLocalTable(Oid relationId);
 static void ErrorIfAlterTableDefinesFKeyFromPostgresToCitusLocalTable(
 	AlterTableStmt *alterTableStatement);
 static List * GetAlterTableStmtFKeyConstraintList(AlterTableStmt *alterTableStatement);
@@ -139,20 +140,28 @@ PreprocessDropTableStmt(Node *node, const char *queryString)
 
 
 /*
- * PostprocessCreateTableStmtPartitionOf takes CreateStmt object as a parameter
- * but it only processes CREATE TABLE ... PARTITION OF statements and it checks
+ * PostprocessCreateTableStmt takes CreateStmt object as a parameter and errors
+ * out if it creates a table with a foreign key that references to a citus local
+ * table.
+ *
+ * It also processes CREATE TABLE ... PARTITION OF statements and it checks
  * if user creates the table as a partition of a distributed table. In that case,
  * it distributes partition as well. Since the table itself is a partition,
  * CreateDistributedTable will attach it to its parent table automatically after
  * distributing it.
- *
- * This function does nothing if the provided CreateStmt is not a CREATE TABLE ...
- * PARTITION OF command.
  */
 List *
-PostprocessCreateTableStmtPartitionOf(CreateStmt *createStatement, const
-									  char *queryString)
+PostprocessCreateTableStmt(CreateStmt *createStatement, const char *queryString)
 {
+	/*
+	 * Relation must exist and it is already locked as standard process utility
+	 * is already executed.
+	 */
+	bool missingOk = false;
+	Oid relationId = RangeVarGetRelid(createStatement->relation, NoLock, missingOk);
+
+	ErrorIfTableHasForeignKeyToCitusLocalTable(relationId);
+
 	if (createStatement->inhRelations != NIL && createStatement->partbound != NULL)
 	{
 		RangeVar *parentRelation = linitial(createStatement->inhRelations);
@@ -171,9 +180,6 @@ PostprocessCreateTableStmtPartitionOf(CreateStmt *createStatement, const
 		 */
 		if (IsCitusTable(parentRelationId))
 		{
-			bool missingOk = false;
-			Oid relationId = RangeVarGetRelid(createStatement->relation, NoLock,
-											  missingOk);
 			Var *parentDistributionColumn = ForceDistPartitionKey(parentRelationId);
 			char parentDistributionMethod = DISTRIBUTE_BY_HASH;
 			char *parentRelationName = generate_qualified_relation_name(parentRelationId);
@@ -186,6 +192,30 @@ PostprocessCreateTableStmtPartitionOf(CreateStmt *createStatement, const
 	}
 
 	return NIL;
+}
+
+
+/*
+ * ErrorIfTableHasForeignKeyToCitusLocalTable errors out if table has a foreign
+ * key to a citus local table.
+ */
+static void
+ErrorIfTableHasForeignKeyToCitusLocalTable(Oid relationId)
+{
+	if (!HasForeignKeyToCitusLocalTable(relationId))
+	{
+		return;
+	}
+
+	char *relationName = get_rel_name(relationId);
+	ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("cannot create table \"%s\" as it has a foreign key "
+						   "to a citus local table", relationName),
+					errhint("First create the table without foreign keys to "
+							"citus local tables and then convert your table to "
+							"a citus local table with create_citus_local_table "
+							"udf, then define the foreign key with ALTER TABLE "
+							"command.")));
 }
 
 

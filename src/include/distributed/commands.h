@@ -122,6 +122,7 @@ extern void ErrorOutForFKeyBetweenPostgresAndCitusLocalTable(Oid localTableId);
 extern bool ColumnAppearsInForeignKeyToReferenceTable(char *columnName, Oid
 													  relationId);
 extern List * GetReferencingForeignConstaintCommands(Oid relationOid);
+extern bool HasForeignKeyToCitusLocalTable(Oid relationId);
 extern bool HasForeignKeyToReferenceTable(Oid relationOid);
 extern bool TableReferenced(Oid relationOid);
 extern bool TableReferencing(Oid relationOid);
@@ -233,8 +234,8 @@ extern Node * ProcessCreateSubscriptionStmt(CreateSubscriptionStmt *createSubStm
 
 /* table.c - forward declarations */
 extern List * PreprocessDropTableStmt(Node *stmt, const char *queryString);
-extern List * PostprocessCreateTableStmtPartitionOf(CreateStmt *createStatement,
-													const char *queryString);
+extern List * PostprocessCreateTableStmt(CreateStmt *createStatement,
+										 const char *queryString);
 extern List * PostprocessAlterTableStmtAttachPartition(
 	AlterTableStmt *alterTableStatement,
 	const char *queryString);

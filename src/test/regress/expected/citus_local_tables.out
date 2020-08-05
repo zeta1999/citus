@@ -392,6 +392,8 @@ ALTER TABLE local_table ADD CONSTRAINT fkey_local_to_c FOREIGN KEY(a) references
 ERROR:  cannot create foreign key constraint as "local_table" is a postgres local table
 ALTER TABLE local_table ADD COLUMN b int references citus_local_table_1(a);
 ERROR:  cannot create foreign key constraint as "local_table" is a postgres local table
+CREATE TABLE local_table_4 (a int references citus_local_table_1(a));
+ERROR:  cannot create table "local_table_4" as it has a foreign key to a citus local table
 ALTER TABLE citus_local_table_1 ADD COLUMN b int NOT NULL;
 NOTICE:  executing the command locally: SELECT worker_apply_shard_ddl_command (1504027, 'citus_local_tables_test_schema', 'ALTER TABLE citus_local_table_1 ADD COLUMN b int NOT NULL;')
 -- show that we added column with NOT NULL
