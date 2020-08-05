@@ -19,7 +19,6 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_trigger.h"
 #include "distributed/coordinator_protocol.h"
-#include "distributed/create_citus_local_table.h"
 #include "distributed/citus_ruleutils.h"
 #include "distributed/colocation_utils.h"
 #include "distributed/commands.h"
@@ -873,32 +872,4 @@ InsertMetadataForCitusLocalTable(Oid citusLocalTableId, uint64 shardId)
 	int workerStartIndex = 0;
 	InsertShardPlacementRows(citusLocalTableId, shardId, nodeList,
 							 workerStartIndex, replicationFactor);
-}
-
-
-/*
- * IsCitusLocalTable returns whether the given relationId identifies a citus
- * local table.
- */
-bool
-IsCitusLocalTable(Oid relationId)
-{
-	if (!IsCitusTable(relationId))
-	{
-		return false;
-	}
-
-	CitusTableCacheEntry *tableEntry = GetCitusTableCacheEntry(relationId);
-
-	if (tableEntry->partitionMethod != DISTRIBUTE_BY_NONE)
-	{
-		return false;
-	}
-
-	if (tableEntry->replicationModel == REPLICATION_MODEL_2PC)
-	{
-		return false;
-	}
-
-	return true;
 }

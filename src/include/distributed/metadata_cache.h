@@ -117,6 +117,22 @@ typedef struct DistObjectCacheEntry
 } DistObjectCacheEntry;
 
 
+/*
+ * Methods to check if given partitionMethod and replicationModel would identify
+ * a citus local table or a reference table especially when the cache entry for
+ * table is not inserted yet.
+ */
+#define IsReferenceTableByParameters(partitionMethod, replicationModel) \
+	((partitionMethod) == DISTRIBUTE_BY_NONE && \
+	 (replicationModel) == REPLICATION_MODEL_2PC)
+
+#define IsCitusLocalTableByParameters(partitionMethod, replicationModel) \
+	((partitionMethod) == DISTRIBUTE_BY_NONE && \
+	 (replicationModel) != REPLICATION_MODEL_2PC)
+
+
+extern bool IsReferenceTable(Oid relationId);
+extern bool IsCitusLocalTable(Oid relationId);
 extern bool IsCitusTable(Oid relationId);
 extern List * CitusTableList(void);
 extern ShardInterval * LoadShardInterval(uint64 shardId);

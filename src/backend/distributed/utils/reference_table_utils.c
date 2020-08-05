@@ -58,33 +58,6 @@ PG_FUNCTION_INFO_V1(replicate_reference_tables);
 
 
 /*
- * IsReferenceTable returns whether the given relation ID identifies a reference
- * table.
- */
-bool
-IsReferenceTable(Oid relationId)
-{
-	if (!IsCitusTable(relationId))
-	{
-		return false;
-	}
-	CitusTableCacheEntry *tableEntry = GetCitusTableCacheEntry(relationId);
-
-	if (tableEntry->partitionMethod != DISTRIBUTE_BY_NONE)
-	{
-		return false;
-	}
-
-	if (tableEntry->replicationModel == REPLICATION_MODEL_2PC)
-	{
-		return true;
-	}
-
-	return false;
-}
-
-
-/*
  * replicate_reference_tables is a UDF to ensure that allreference tables are
  * replicated to all nodes.
  */

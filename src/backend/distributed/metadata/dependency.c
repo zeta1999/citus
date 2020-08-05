@@ -23,7 +23,6 @@
 #include "catalog/pg_type.h"
 #include "distributed/commands.h"
 #include "distributed/commands/utility_hook.h"
-#include "distributed/create_citus_local_table.h"
 #include "distributed/listutils.h"
 #include "distributed/metadata/dependency.h"
 #include "distributed/metadata/distobject.h"

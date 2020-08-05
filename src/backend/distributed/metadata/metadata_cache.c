@@ -294,6 +294,46 @@ EnsureModificationsCanRun(void)
 
 
 /*
+ * IsCitusLocalTable returns whether the given relationId identifies a citus
+ * local table.
+ */
+bool
+IsCitusLocalTable(Oid relationId)
+{
+	if (!IsCitusTable(relationId))
+	{
+		return false;
+	}
+
+	CitusTableCacheEntry *tableEntry = GetCitusTableCacheEntry(relationId);
+
+	char partitionMethod = tableEntry->partitionMethod;
+	char replicationModel = tableEntry->replicationModel;
+	return IsCitusLocalTableByParameters(partitionMethod, replicationModel);
+}
+
+
+/*
+ * IsReferenceTable returns whether the given relation ID identifies a reference
+ * table.
+ */
+bool
+IsReferenceTable(Oid relationId)
+{
+	if (!IsCitusTable(relationId))
+	{
+		return false;
+	}
+
+	CitusTableCacheEntry *tableEntry = GetCitusTableCacheEntry(relationId);
+
+	char partitionMethod = tableEntry->partitionMethod;
+	char replicationModel = tableEntry->replicationModel;
+	return IsReferenceTableByParameters(partitionMethod, replicationModel);
+}
+
+
+/*
  * IsCitusTable returns whether relationId is a distributed relation or
  * not.
  */

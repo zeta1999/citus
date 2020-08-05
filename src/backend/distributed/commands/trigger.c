@@ -26,7 +26,6 @@
 #include "distributed/citus_ruleutils.h"
 #include "distributed/commands.h"
 #include "distributed/commands/utility_hook.h"
-#include "distributed/create_citus_local_table.h"
 #include "distributed/deparser.h"
 #include "distributed/listutils.h"
 #include "distributed/metadata_cache.h"
