@@ -145,6 +145,12 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 
 		if (!referencedIsCitus && !selfReferencingTable)
 		{
+			if (IsCitusLocalTableByParameters(referencingDistMethod,
+											  referencingReplicationModel))
+			{
+				ErrorOutForFKeyBetweenPostgresAndCitusLocalTable(referencedTableId);
+			}
+
 			char *referencedTableName = get_rel_name(referencedTableId);
 
 			ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -337,6 +343,24 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 
 		ReleaseSysCache(heapTuple);
 	}
+}
+
+
+/*
+ * ErrorOutForFKeyBetweenPostgresAndCitusLocalTable is an helper function to
+ * error out for foreign keys between postgres local tables and citus local
+ * tables.
+ */
+void
+ErrorOutForFKeyBetweenPostgresAndCitusLocalTable(Oid localTableId)
+{
+	char *localTableName = get_rel_name(localTableId);
+	ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("cannot create foreign key constraint as \"%s\" is "
+						   "a postgres local table", localTableName),
+					errhint("first create a citus local table from the postgres "
+							"local table with create_citus_local_table udf "
+							"and re-execute the ALTER TABLE command")));
 }
 
 
