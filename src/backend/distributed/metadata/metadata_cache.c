@@ -140,7 +140,6 @@ typedef struct MetadataCacheData
 	Oid distObjectPrimaryKeyIndexId;
 	Oid distColocationRelationId;
 	Oid distColocationConfigurationIndexId;
-	Oid distColocationColocationidIndexId;
 	Oid distPartitionRelationId;
 	Oid distPartitionLogicalRelidIndexId;
 	Oid distPartitionColocationidIndexId;
@@ -151,7 +150,6 @@ typedef struct MetadataCacheData
 	Oid distPlacementGroupidIndexId;
 	Oid distTransactionRelationId;
 	Oid distTransactionGroupIndexId;
-	Oid distTransactionRecordIndexId;
 	Oid citusCatalogNamespaceId;
 	Oid copyFormatTypeId;
 	Oid readIntermediateResultFuncId;
@@ -165,7 +163,6 @@ typedef struct MetadataCacheData
 	Oid textCopyFormatId;
 	Oid primaryNodeRoleId;
 	Oid secondaryNodeRoleId;
-	Oid unavailableNodeRoleId;
 	Oid pgTableIsVisibleFuncId;
 	Oid citusTableIsVisibleFuncId;
 	Oid jsonbExtractPathFuncId;
@@ -2069,17 +2066,6 @@ DistLocalGroupIdRelationId(void)
 }
 
 
-/* return oid of pg_dist_rebalance_strategy relation */
-Oid
-DistRebalanceStrategyRelationId(void)
-{
-	CachedRelationLookup("pg_dist_rebalance_strategy",
-						 &MetadataCache.distRebalanceStrategyRelationId);
-
-	return MetadataCache.distRebalanceStrategyRelationId;
-}
-
-
 /* return the oid of citus namespace */
 Oid
 CitusCatalogNamespaceId(void)
@@ -2131,17 +2117,6 @@ DistColocationConfigurationIndexId(void)
 						 &MetadataCache.distColocationConfigurationIndexId);
 
 	return MetadataCache.distColocationConfigurationIndexId;
-}
-
-
-/* return oid of pg_dist_colocation_pkey index */
-Oid
-DistColocationColocationidIndexId(void)
-{
-	CachedRelationLookup("pg_dist_colocation_pkey",
-						 &MetadataCache.distColocationColocationidIndexId);
-
-	return MetadataCache.distColocationColocationidIndexId;
 }
 
 
@@ -2241,17 +2216,6 @@ DistTransactionGroupIndexId(void)
 						 &MetadataCache.distTransactionGroupIndexId);
 
 	return MetadataCache.distTransactionGroupIndexId;
-}
-
-
-/* return oid of pg_dist_transaction_unique_constraint */
-Oid
-DistTransactionRecordIndexId(void)
-{
-	CachedRelationLookup("pg_dist_transaction_unique_constraint",
-						 &MetadataCache.distTransactionRecordIndexId);
-
-	return MetadataCache.distTransactionRecordIndexId;
 }
 
 
@@ -2401,24 +2365,6 @@ CitusAnyValueFunctionId(void)
 	}
 
 	return MetadataCache.anyValueFunctionId;
-}
-
-
-/* return oid of the citus_text_send_as_jsonb(text) function */
-Oid
-CitusTextSendAsJsonbFunctionId(void)
-{
-	if (MetadataCache.textSendAsJsonbFunctionId == InvalidOid)
-	{
-		List *nameList = list_make2(makeString("pg_catalog"),
-									makeString("citus_text_send_as_jsonb"));
-		Oid paramOids[1] = { TEXTOID };
-
-		MetadataCache.textSendAsJsonbFunctionId =
-			LookupFuncName(nameList, 1, paramOids, false);
-	}
-
-	return MetadataCache.textSendAsJsonbFunctionId;
 }
 
 
@@ -2679,20 +2625,6 @@ SecondaryNodeRoleId(void)
 	}
 
 	return MetadataCache.secondaryNodeRoleId;
-}
-
-
-/* return the Oid of the 'unavailable' nodeRole enum value */
-Oid
-UnavailableNodeRoleId(void)
-{
-	if (!MetadataCache.unavailableNodeRoleId)
-	{
-		MetadataCache.unavailableNodeRoleId = LookupStringEnumValueId("noderole",
-																	  "unavailable");
-	}
-
-	return MetadataCache.unavailableNodeRoleId;
 }
 
 
