@@ -45,6 +45,11 @@ typedef bool (*CheckRelationFunc)(Oid);
 
 
 /* Local functions forward declarations */
+static void EnsureReferencingTableNotReplicated(Oid referencingTableId);
+static void EnsureSupportedForeignKeyOnDistributionKey(Form_pg_constraint constraintForm);
+static void EnsureSupportedForeignKeyBetweenLocalAndReferenceTable(Form_pg_constraint constraintForm,
+													  char referencingReplicationModel,
+													  char referencedReplicationModel);
 static bool HeapTupleOfForeignConstraintIncludesColumn(HeapTuple heapTuple,
 													   Oid relationId,
 													   int pgConstraintKey,
@@ -111,19 +116,6 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 										  uint32 referencingColocationId)
 {
 	Oid referencingTableId = relation->rd_id;
-	bool referencingNotReplicated = true;
-	bool referencingIsCitus = IsCitusTable(referencingTableId);
-
-	if (referencingIsCitus)
-	{
-		/* ALTER TABLE command is applied over single replicated table */
-		referencingNotReplicated = SingleReplicatedTable(referencingTableId);
-	}
-	else
-	{
-		/* Creating single replicated table with foreign constraint */
-		referencingNotReplicated = (ShardReplicationFactor == 1);
-	}
 
 	int flags = INCLUDE_REFERENCING_CONSTRAINTS;
 	List *foreignKeyOids = GetForeignKeyOids(referencingTableId, flags);
@@ -197,29 +189,9 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 			(referencedDistMethod == DISTRIBUTE_BY_NONE);
 		if (referencingIsCitusLocalOrRefTable && referencedIsCitusLocalOrRefTable)
 		{
-			bool referencingIsReferenceTable =
-				(referencingReplicationModel == REPLICATION_MODEL_2PC);
-			bool referencedIsCitusLocalTable =
-				(referencedReplicationModel != REPLICATION_MODEL_2PC);
-			if (referencingIsReferenceTable && referencedIsCitusLocalTable)
-			{
-				/*
-				 * We only support RESTRICT and NO ACTION behaviors for the
-				 * foreign keys from reference tables to citus local tables.
-				 * This is because, we can't cascade dml operations from citus
-				 * local tables's coordinator placement to the remote placements
-				 * of the reference table.
-				 */
-				if (!(BehaviorIsRestrictOrNoAction(constraintForm->confdeltype) &&
-					  BehaviorIsRestrictOrNoAction(constraintForm->confupdtype)))
-				{
-					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									errmsg("cannot define foreign key constraint, "
-										   "foreign keys from reference tables to "
-										   "citus local tables can only be defined "
-										   "with NO ACTION or RESTRICT behaviors")));
-				}
-			}
+			EnsureSupportedForeignKeyBetweenLocalAndReferenceTable(constraintForm,
+																  referencingReplicationModel,
+																  referencedReplicationModel);
 
 			ReleaseSysCache(heapTuple);
 			continue;
@@ -277,37 +249,7 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 		 */
 		if (referencingColumnsIncludeDistKey)
 		{
-			/*
-			 * ON DELETE SET NULL and ON DELETE SET DEFAULT is not supported. Because we do
-			 * not want to set partition column to NULL or default value.
-			 */
-			if (constraintForm->confdeltype == FKCONSTR_ACTION_SETNULL ||
-				constraintForm->confdeltype == FKCONSTR_ACTION_SETDEFAULT)
-			{
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("cannot create foreign key constraint"),
-								errdetail("SET NULL or SET DEFAULT is not supported"
-										  " in ON DELETE operation when distribution "
-										  "key is included in the foreign key constraint")));
-			}
-
-			/*
-			 * ON UPDATE SET NULL, ON UPDATE SET DEFAULT and UPDATE CASCADE is not supported.
-			 * Because we do not want to set partition column to NULL or default value. Also
-			 * cascading update operation would require re-partitioning. Updating partition
-			 * column value is not allowed anyway even outside of foreign key concept.
-			 */
-			if (constraintForm->confupdtype == FKCONSTR_ACTION_SETNULL ||
-				constraintForm->confupdtype == FKCONSTR_ACTION_SETDEFAULT ||
-				constraintForm->confupdtype == FKCONSTR_ACTION_CASCADE)
-			{
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("cannot create foreign key constraint"),
-								errdetail("SET NULL, SET DEFAULT or CASCADE is not "
-										  "supported in ON UPDATE operation  when "
-										  "distribution key included in the foreign "
-										  "constraint.")));
-			}
+			EnsureSupportedForeignKeyOnDistributionKey(constraintForm);
 		}
 
 		/*
@@ -334,23 +276,112 @@ ErrorIfUnsupportedForeignConstraintExists(Relation relation, char referencingDis
 		 * placements always be in the same state (b) executors are aware of reference
 		 * tables and handle concurrency related issues accordingly.
 		 */
-		if (!referencingNotReplicated)
-		{
-			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("cannot create foreign key constraint"),
-							errdetail("Citus Community Edition currently supports "
-									  "foreign key constraints only for "
-									  "\"citus.shard_replication_factor = 1\"."),
-							errhint("Please change \"citus.shard_replication_factor to "
-									"1\". To learn more about using foreign keys with "
-									"other replication factors, please contact us at "
-									"https://citusdata.com/about/contact_us.")));
-		}
+		EnsureReferencingTableNotReplicated(referencingTableId);
 
 		ReleaseSysCache(heapTuple);
 	}
 }
 
+
+
+static void
+EnsureSupportedForeignKeyBetweenLocalAndReferenceTable(Form_pg_constraint constraintForm,
+													  char referencingReplicationModel,
+													  char referencedReplicationModel)
+{
+	bool referencingIsReferenceTable =
+		(referencingReplicationModel == REPLICATION_MODEL_2PC);
+	bool referencedIsCitusLocalTable =
+		(referencedReplicationModel != REPLICATION_MODEL_2PC);
+	if (referencingIsReferenceTable && referencedIsCitusLocalTable)
+	{
+		/*
+		 * We only support RESTRICT and NO ACTION behaviors for the
+		 * foreign keys from reference tables to citus local tables.
+		 * This is because, we can't cascade dml operations from citus
+		 * local tables's coordinator placement to the remote placements
+		 * of the reference table.
+		 */
+		if (!(BehaviorIsRestrictOrNoAction(constraintForm->confdeltype) &&
+			  BehaviorIsRestrictOrNoAction(constraintForm->confupdtype)))
+		{
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("cannot define foreign key constraint, "
+								   "foreign keys from reference tables to "
+								   "citus local tables can only be defined "
+								   "with NO ACTION or RESTRICT behaviors")));
+		}
+	}
+}
+
+static void
+EnsureSupportedForeignKeyOnDistributionKey(Form_pg_constraint constraintForm)
+{
+	/*
+	 * ON DELETE SET NULL and ON DELETE SET DEFAULT is not supported. Because we do
+	 * not want to set partition column to NULL or default value.
+	 */
+	if (constraintForm->confdeltype == FKCONSTR_ACTION_SETNULL ||
+		constraintForm->confdeltype == FKCONSTR_ACTION_SETDEFAULT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("cannot create foreign key constraint"),
+						errdetail("SET NULL or SET DEFAULT is not supported"
+								  " in ON DELETE operation when distribution "
+								  "key is included in the foreign key constraint")));
+	}
+
+	/*
+	 * ON UPDATE SET NULL, ON UPDATE SET DEFAULT and UPDATE CASCADE is not supported.
+	 * Because we do not want to set partition column to NULL or default value. Also
+	 * cascading update operation would require re-partitioning. Updating partition
+	 * column value is not allowed anyway even outside of foreign key concept.
+	 */
+	if (constraintForm->confupdtype == FKCONSTR_ACTION_SETNULL ||
+		constraintForm->confupdtype == FKCONSTR_ACTION_SETDEFAULT ||
+		constraintForm->confupdtype == FKCONSTR_ACTION_CASCADE)
+	{
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("cannot create foreign key constraint"),
+						errdetail("SET NULL, SET DEFAULT or CASCADE is not "
+								  "supported in ON UPDATE operation  when "
+								  "distribution key included in the foreign "
+								  "constraint.")));
+	}
+
+}
+
+static void
+EnsureReferencingTableNotReplicated(Oid referencingTableId)
+{
+
+	bool referencingNotReplicated = true;
+	bool referencingIsCitus = IsCitusTable(referencingTableId);
+
+	if (referencingIsCitus)
+	{
+		/* ALTER TABLE command is applied over single replicated table */
+		referencingNotReplicated = SingleReplicatedTable(referencingTableId);
+	}
+	else
+	{
+		/* Creating single replicated table with foreign constraint */
+		referencingNotReplicated = (ShardReplicationFactor == 1);
+	}
+
+	if (!referencingNotReplicated)
+	{
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("cannot create foreign key constraint"),
+						errdetail("Citus Community Edition currently supports "
+								  "foreign key constraints only for "
+								  "\"citus.shard_replication_factor = 1\"."),
+						errhint("Please change \"citus.shard_replication_factor to "
+								"1\". To learn more about using foreign keys with "
+								"other replication factors, please contact us at "
+								"https://citusdata.com/about/contact_us.")));
+	}
+}
 
 /*
  * ErrorOutForFKeyBetweenPostgresAndCitusLocalTable is a helper function to
