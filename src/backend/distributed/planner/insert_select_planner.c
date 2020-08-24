@@ -729,7 +729,6 @@ RouterModifyTaskForShardInterval(Query *originalQuery,
 	 */
 	if (!allReferenceTables)
 	{
-		AddShardIntervalRestrictionToSelect(copiedSubquery, shardInterval);
 	}
 
 	/* mark that we don't want the router planner to generate dummy hosts/queries */

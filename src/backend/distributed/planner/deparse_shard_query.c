@@ -69,20 +69,12 @@ RebuildQueryStrings(Job *workerJob)
 		{
 			/* for INSERT..SELECT, adjust shard names in SELECT part */
 			List *relationShardList = task->relationShardList;
-			ShardInterval *shardInterval = LoadShardInterval(task->anchorShardId);
 
 			query = copyObject(originalQuery);
 
 			RangeTblEntry *copiedInsertRte = ExtractResultRelationRTEOrError(query);
 			RangeTblEntry *copiedSubqueryRte = ExtractSelectRangeTableEntry(query);
 			Query *copiedSubquery = copiedSubqueryRte->subquery;
-
-			/* there are no restrictions to add for reference tables */
-			char partitionMethod = PartitionMethod(shardInterval->relationId);
-			if (partitionMethod != DISTRIBUTE_BY_NONE)
-			{
-				AddShardIntervalRestrictionToSelect(copiedSubquery, shardInterval);
-			}
 
 			ReorderInsertSelectTargetLists(query, copiedInsertRte, copiedSubqueryRte);
 
