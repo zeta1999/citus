@@ -492,6 +492,15 @@ RecordParallelRelationAccess(Oid relationId, ShardPlacementAccessType placementA
 	/* act accordingly if it's a conflicting access */
 	CheckConflictingParallelRelationAccesses(relationId, placementAccess);
 
+	/*
+	 * CheckConflictingParallelRelationAccesses might switch to sequential
+	 * execution. If that's the case, no need to continue.
+	 */
+	if (MultiShardConnectionType == SEQUENTIAL_CONNECTION)
+	{
+		return;
+	}
+
 	/* If a relation is partitioned, record accesses to all of its partitions as well. */
 	if (PartitionedTable(relationId))
 	{

@@ -726,6 +726,14 @@ AdaptiveExecutor(CitusScanState *scanState)
 		jobIdList = ExecuteDependentTasks(taskList, job);
 	}
 
+
+	/*
+	 * Record the parallel access (if applicable) before deciding
+	 * on the pool size, as this call might switch the execution
+	 * to sequential.
+	 */
+	RecordParallelRelationAccessForTaskList(taskList);
+
 	if (MultiShardConnectionType == SEQUENTIAL_CONNECTION)
 	{
 		/* defer decision after ExecuteSubPlans() */
@@ -1274,21 +1282,6 @@ StartDistributedExecution(DistributedExecution *execution)
 	 * should use transaction blocks (see below).
 	 */
 	AcquireExecutorShardLocksForExecution(execution);
-
-	/*
-	 * We should not record parallel access if the target pool size is less than 2.
-	 * The reason is that we define parallel access as at least two connections
-	 * accessing established to worker node.
-	 *
-	 * It is not ideal to have this check here, it'd have been better if we simply passed
-	 * DistributedExecution directly to the RecordParallelAccess*() function. However,
-	 * since we have two other executors that rely on the function, we had to only pass
-	 * the tasklist to have a common API.
-	 */
-	if (execution->targetPoolSize > 1)
-	{
-		RecordParallelRelationAccessForTaskList(execution->tasksToExecute);
-	}
 }
 
 
