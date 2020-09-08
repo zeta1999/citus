@@ -279,7 +279,7 @@ TryToDelegateFunctionCall(DistributedPlanningContext *planContext)
 
 	if (colocatedWithReferenceTable)
 	{
-		placement = ShardPlacementForFunctionColocatedWithReferenceTable(distTable);
+		placement = ShardPlacementForFunctionColocatedWithNoDistKeyTable(distTable);
 	}
 	else
 	{
@@ -425,7 +425,7 @@ ShardPlacementForFunctionColocatedWithDistTable(DistObjectCacheEntry *procedure,
  * on consecutive runs. Otherwise the function returns the first placement available.
  */
 ShardPlacement *
-ShardPlacementForFunctionColocatedWithReferenceTable(CitusTableCacheEntry *cacheEntry)
+ShardPlacementForFunctionColocatedWithNoDistKeyTable(CitusTableCacheEntry *cacheEntry)
 {
 	const ShardInterval *shardInterval = cacheEntry->sortedShardIntervalArray[0];
 	const uint64 referenceTableShardId = shardInterval->shardId;

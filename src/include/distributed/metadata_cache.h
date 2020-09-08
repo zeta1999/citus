@@ -170,7 +170,7 @@ extern bool HasOverlappingShardInterval(ShardInterval **shardIntervalArray,
 										Oid shardIntervalCollation,
 										FmgrInfo *shardIntervalSortCompareFunction);
 
-extern ShardPlacement * ShardPlacementForFunctionColocatedWithReferenceTable(
+extern ShardPlacement * ShardPlacementForFunctionColocatedWithNoDistKeyTable(
 	CitusTableCacheEntry *cacheEntry);
 extern ShardPlacement * ShardPlacementForFunctionColocatedWithDistTable(
 	DistObjectCacheEntry *procedure, FuncExpr *funcExpr, Var *partitionColumn,
