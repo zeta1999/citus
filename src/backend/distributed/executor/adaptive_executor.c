@@ -1062,6 +1062,8 @@ CreateBasicExecutionParams(RowModifyLevel modLevel,
 	return executionParams;
 }
 
+#include "distributed/locally_reserved_shared_connections.h"
+
 
 /*
  * CreateDistributedExecution creates a distributed execution data structure for
@@ -1130,13 +1132,33 @@ CreateDistributedExecution(RowModifyLevel modLevel, List *taskList,
 			initStringInfo(&execution->stringInfoDataArray[i]);
 		}
 	}
-
 	if (ShouldExecuteTasksLocally(taskList))
 	{
 		bool readOnlyPlan = !TaskListModifiesDatabase(modLevel, taskList);
 
 		ExtractLocalAndRemoteTasks(readOnlyPlan, taskList, &execution->localTaskList,
 								   &execution->remoteTaskList);
+	}
+	else if (AnyTaskAccessesLocalNode(taskList))
+	{
+		/*
+		 * There are local tasks but we have not decided to use local execution.
+		 * We can try to reserve a connection to the local node, if that fails
+		 * we can force the local execution, otherwise the execution might be
+		 * blocked.
+		 */
+		if (!CheckConnectionPossibilityForLocalNode())
+		{
+			bool readOnlyPlan = !TaskListModifiesDatabase(modLevel, taskList);
+
+			elog(DEBUG1, "forcing for local execution");
+			ExtractLocalAndRemoteTasks(readOnlyPlan, taskList, &execution->localTaskList,
+									   &execution->remoteTaskList);
+		}
+		else
+		{
+			elog(DEBUG1, "could not for local execution");
+		}
 	}
 
 	return execution;

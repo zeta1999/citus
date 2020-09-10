@@ -185,6 +185,7 @@ StoreAllRemoteConnectionStats(Tuplestorestate *tupleStore, TupleDesc tupleDescri
 	UnLockConnectionSharedMemory();
 }
 
+static int TotalActiveBackendCount(void);
 
 /*
  * GetMaxSharedPoolSize is a wrapper around MaxSharedPoolSize which is controlled
@@ -196,12 +197,41 @@ StoreAllRemoteConnectionStats(Tuplestorestate *tupleStore, TupleDesc tupleDescri
 int
 GetMaxSharedPoolSize(void)
 {
+//	int	totalActiveBackendCount = TotalActiveBackendCount();
+//elog(DEBUG1, "totalActiveBackendCount: %d", totalActiveBackendCount);
 	if (MaxSharedPoolSize == ADJUST_POOLSIZE_AUTOMATICALLY)
 	{
 		return MaxConnections;
 	}
 
 	return MaxSharedPoolSize;
+}
+
+#include "distributed/backend_data.h"
+static int
+TotalActiveBackendCount(void)
+{
+	LockBackendSharedMemory(LW_EXCLUSIVE);
+
+	int counter = 0;
+	/* build list of starting procs */
+	for (int curBackend = 0; curBackend < MaxBackends; curBackend++)
+	{
+		PGPROC *currentProc = &ProcGlobal->allProcs[curBackend];
+
+		if (currentProc->lxid == InvalidLocalTransactionId)
+		{
+			/* unused PGPROC slot */
+			continue;
+		}
+
+
+		++counter;
+	}
+
+	UnlockBackendSharedMemory();
+
+	return counter;
 }
 
 
@@ -255,6 +285,15 @@ TryToIncrementSharedConnectionCounter(const char *hostname, int port)
 							   MAX_NODE_LENGTH)));
 	}
 
+	LockBackendSharedMemory(LW_EXCLUSIVE);
+
+	if (!HaveNFreeProcs(1))
+	{
+		UnlockBackendSharedMemory();
+
+		return false;
+	}
+
 	/*
 	 * The local session might already have some reserved connections to the given
 	 * node. In that case, we don't need to go through the shared memory.
@@ -263,6 +302,7 @@ TryToIncrementSharedConnectionCounter(const char *hostname, int port)
 	if (CanUseReservedConnection(hostname, port, userId, MyDatabaseId))
 	{
 		MarkReservedConnectionUsed(hostname, port, userId, MyDatabaseId);
+		UnlockBackendSharedMemory();
 
 		return true;
 	}
@@ -290,6 +330,8 @@ TryToIncrementSharedConnectionCounter(const char *hostname, int port)
 	if (!connectionEntry)
 	{
 		UnLockConnectionSharedMemory();
+		UnlockBackendSharedMemory();
+
 		return true;
 	}
 
@@ -312,6 +354,7 @@ TryToIncrementSharedConnectionCounter(const char *hostname, int port)
 	}
 
 	UnLockConnectionSharedMemory();
+	UnlockBackendSharedMemory();
 
 	return counterIncremented;
 }
