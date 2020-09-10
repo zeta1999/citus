@@ -223,8 +223,12 @@ GetNodeUserDatabaseConnection(uint32 flags, const char *hostname, int32 port,
 	 * connection can only be NULL for optional connections, which we don't
 	 * support in this codepath.
 	 */
-	Assert((flags & OPTIONAL_CONNECTION) == 0);
-	Assert(connection != NULL);
+
+	/*Assert((flags & OPTIONAL_CONNECTION) == 0); */
+	if (connection == NULL)
+	{
+		return NULL;
+	}
 
 	FinishConnectionEstablishment(connection);
 
@@ -1027,6 +1031,7 @@ CloseNotReadyMultiConnectionStates(List *connectionStates)
  * CitusPQFinish is a wrapper around PQfinish and does book keeping on shared connection
  * counters.
  */
+#include "unistd.h"
 static void
 CitusPQFinish(MultiConnection *connection)
 {

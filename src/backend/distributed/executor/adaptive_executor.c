@@ -1062,6 +1062,7 @@ CreateBasicExecutionParams(RowModifyLevel modLevel,
 	return executionParams;
 }
 
+
 #include "distributed/locally_reserved_shared_connections.h"
 
 
@@ -1141,23 +1142,47 @@ CreateDistributedExecution(RowModifyLevel modLevel, List *taskList,
 	}
 	else if (AnyTaskAccessesLocalNode(taskList))
 	{
-		/*
-		 * There are local tasks but we have not decided to use local execution.
-		 * We can try to reserve a connection to the local node, if that fails
-		 * we can force the local execution, otherwise the execution might be
-		 * blocked.
-		 */
-		if (!CheckConnectionPossibilityForLocalNode())
-		{
-			bool readOnlyPlan = !TaskListModifiesDatabase(modLevel, taskList);
+		char *databaseName = get_database_name(MyDatabaseId);
+		Oid userId = GetUserId();
 
-			elog(DEBUG1, "forcing for local execution");
-			ExtractLocalAndRemoteTasks(readOnlyPlan, taskList, &execution->localTaskList,
-									   &execution->remoteTaskList);
+		/* TODO: use tableOwner instead of currentUserName*/
+		char *userName = GetUserNameFromId(userId, false);
+
+		int localGroupid = GetLocalGroupId();
+		WorkerNode *localNode = PrimaryNodeForGroup(localGroupid, NULL);
+		char *localHostName = localNode->workerName;
+		int localPort = localNode->workerPort;
+
+		if (ConnectionAvailableToNode(localHostName, localPort, userName,
+									  databaseName) != NULL)
+		{
+			/*
+			 * The same user has already an active connection for the node. It
+			 * means that the execution can use the same connection, so don't
+			 * strictly need a new connection
+			 */
 		}
 		else
 		{
-			elog(DEBUG1, "could not for local execution");
+			/*
+			 * Force to  get one  connection so that the execution will have
+			 * at least one connection.
+			 */
+			MultiConnection *connection =
+				GetNodeUserDatabaseConnection(OPTIONAL_CONNECTION, localHostName,
+											  localPort, userName, databaseName);
+
+			/* we couldn't  get a connection, force to local execution */
+			if (connection == NULL || PQstatus(connection->pgConn) != CONNECTION_OK)
+			{
+				ereport(DEBUG1, (errmsg("could not connect to local node so "
+										"switching to local execution")));
+				bool readOnlyPlan = !TaskListModifiesDatabase(modLevel, taskList);
+
+				ExtractLocalAndRemoteTasks(readOnlyPlan, taskList,
+										   &execution->localTaskList,
+										   &execution->remoteTaskList);
+			}
 		}
 	}
 
@@ -2629,6 +2654,7 @@ OpenNewConnections(WorkerPool *workerPool, int newConnectionCount,
 		 * this.
 		 */
 		connection->connectionState = MULTI_CONNECTION_CONNECTING;
+		connection->optionalConnection = connectionFlags & OPTIONAL_CONNECTION;
 
 		/*
 		 * Ensure that subsequent calls to StartNodeUserDatabaseConnection get a

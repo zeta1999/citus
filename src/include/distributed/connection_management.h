@@ -119,6 +119,7 @@ typedef struct MultiConnection
 
 	/* state of the connection */
 	MultiConnectionState connectionState;
+	bool optionalConnection;
 
 	/* signal that the connection is ready for read/write */
 	bool ioReady;
