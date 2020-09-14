@@ -755,8 +755,6 @@ AdaptiveExecutor(CitusScanState *scanState)
 	/* execute tasks local to the node (if any) */
 	if (list_length(execution->localTaskList) > 0)
 	{
-		RunLocalExecution(scanState, execution);
-
 		/* make sure that we only execute remoteTaskList afterwards */
 		AdjustDistributedExecutionAfterLocalExecution(execution);
 	}
@@ -768,6 +766,11 @@ AdaptiveExecutor(CitusScanState *scanState)
 	else
 	{
 		RunDistributedExecution(execution);
+	}
+
+	if (list_length(execution->localTaskList) > 0)
+	{
+		RunLocalExecution(scanState, execution);
 	}
 
 	if (job->jobQuery->commandType != CMD_SELECT)
