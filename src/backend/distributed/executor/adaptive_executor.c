@@ -588,8 +588,8 @@ static void CleanUpSessions(DistributedExecution *execution);
 
 static void LockPartitionsForDistributedPlan(DistributedPlan *distributedPlan);
 static void AcquireExecutorShardLocksForExecution(DistributedExecution *execution);
-static void AdjustDistributedExecutionAfterLocalExecution(DistributedExecution *
-														  execution);
+static void AdjustDistributedExecutionWithLocalExecution(DistributedExecution *
+														 execution);
 static bool DistributedExecutionModifiesDatabase(DistributedExecution *execution);
 static bool IsMultiShardModification(RowModifyLevel modLevel, List *taskList);
 static bool TaskListModifiesDatabase(RowModifyLevel modLevel, List *taskList);
@@ -756,7 +756,7 @@ AdaptiveExecutor(CitusScanState *scanState)
 	if (list_length(execution->localTaskList) > 0)
 	{
 		/* make sure that we only execute remoteTaskList afterwards */
-		AdjustDistributedExecutionAfterLocalExecution(execution);
+		AdjustDistributedExecutionWithLocalExecution(execution);
 	}
 
 	if (ShouldRunTasksSequentially(execution->tasksToExecute))
@@ -785,7 +785,7 @@ AdaptiveExecutor(CitusScanState *scanState)
 				 !IsCitusTableType(distributedPlan->targetRelationId, REFERENCE_TABLE))
 		{
 			/*
-			 * For reference tables we already add rowsProcessed on the local execution,
+			 * For reference tables we'll add rowsProcessed on the local execution,
 			 * this is required to ensure that mixed local/remote executions reports
 			 * the accurate number of rowsProcessed to the user.
 			 */
@@ -850,11 +850,11 @@ RunLocalExecution(CitusScanState *scanState, DistributedExecution *execution)
 
 
 /*
- * AdjustDistributedExecutionAfterLocalExecution simply updates the necessary fields of
+ * AdjustDistributedExecutionWithLocalExecution simply updates the necessary fields of
  * the distributed execution.
  */
 static void
-AdjustDistributedExecutionAfterLocalExecution(DistributedExecution *execution)
+AdjustDistributedExecutionWithLocalExecution(DistributedExecution *execution)
 {
 	/* we only need to execute the remote tasks */
 	execution->tasksToExecute = execution->remoteTaskList;
