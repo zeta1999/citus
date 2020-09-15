@@ -2981,7 +2981,9 @@ ConnectionStateMachine(WorkerSession *session)
 				}
 				else
 				{
-					int level = SessionHasAssignedTask(session) ? WARNING : DEBUG1;
+					int level =
+						SessionHasAssignedTask(session) || session->commandsSent > 0 ?
+						WARNING : DEBUG1;
 
 					/* can continue with the remaining nodes */
 					ReportConnectionError(connection, level);
@@ -3057,7 +3059,7 @@ SessionHasAssignedTask(WorkerSession *session)
 	TaskPlacementExecution *placementExecution = session->currentTask;
 	Task *task = TaskPlacementExecutionGetTask(placementExecution);
 
-	return (task != NULL && session->commandsSent == 0);
+	return (task != NULL);
 }
 
 
