@@ -3057,7 +3057,7 @@ SessionHasAssignedTask(WorkerSession *session)
 	TaskPlacementExecution *placementExecution = session->currentTask;
 	Task *task = TaskPlacementExecutionGetTask(placementExecution);
 
-	return (task != NULL);
+	return (task != NULL && session->commandsSent == 0);
 }
 
 
