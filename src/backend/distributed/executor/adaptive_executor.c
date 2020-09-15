@@ -2981,8 +2981,10 @@ ConnectionStateMachine(WorkerSession *session)
 				}
 				else
 				{
+					int level = SessionHasAssignedTask(session) ? WARNING : DEBUG1;
+
 					/* can continue with the remaining nodes */
-					ReportConnectionError(connection, DEBUG1);
+					ReportConnectionError(connection, level);
 				}
 
 				RemoveConnectionFromExecution(execution, connection);
