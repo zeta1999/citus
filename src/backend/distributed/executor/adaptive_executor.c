@@ -3013,6 +3013,7 @@ ConnectionStateMachine(WorkerSession *session)
 	} while (connection->connectionState != currentState);
 }
 
+
 /*
  * ErrorMsgIsMaxConnections returns true if the error message
  *
@@ -3044,7 +3045,6 @@ ErrorMsgIsMaxConnections(MultiConnection *connection)
 
 	if (messageDetail != NULL)
 	{
-
 		/*
 		 * We use the error message that is in ProcessStartupPacket()
 		 * on Postgres, where the new connections are rejected
@@ -3057,8 +3057,8 @@ ErrorMsgIsMaxConnections(MultiConnection *connection)
 	}
 
 	return messageContains;
-
 }
+
 
 static bool
 CouldAssignTasksToLocalExecution(WorkerSession *workerSession)

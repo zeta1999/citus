@@ -52,6 +52,8 @@ typedef struct BackendData
 	bool cancelledDueToDeadlock;
 	CitusInitiatedBackend citusBackend;
 	DistributedTransactionId transactionId;
+
+	bool counted;
 } BackendData;
 
 
@@ -70,12 +72,9 @@ extern List * ActiveDistributedTransactionNumbers(void);
 LocalTransactionId GetMyProcLocalTransactionId(void);
 
 
-void
-IncrementActiveBackens(void);
-void
-DecrementActiveBackens(void);
+void IncrementActiveBackens(void);
+void DecrementActiveBackens(void);
 
-uint32
-GetActiveBackends(void);
+uint32 GetActiveBackends(void);
 
 #endif /* BACKEND_DATA_H */

@@ -111,6 +111,7 @@ CitusProcessUtility(Node *node, const char *queryString, ProcessUtilityContext c
  * enable_ddl_propagation GUC. In addition to DDL and COPY, utilities such as
  * TRUNCATE and VACUUM are also supported.
  */
+#include "distributed/backend_data.h"
 void
 multi_ProcessUtility(PlannedStmt *pstmt,
 					 const char *queryString,

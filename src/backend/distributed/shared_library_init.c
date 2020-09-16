@@ -400,11 +400,10 @@ StartupCitusBackend(void)
 	InitializeMaintenanceDaemonBackend();
 	InitializeBackendData();
 	RegisterConnectionCleanup();
-	IncrementActiveBackens();
 }
 
 
-/*
+/*StartupProcessMain
  * RegisterConnectionCleanup cleans up any resources left at the end of the
  * session. We prefer to cleanup before shared memory exit to make sure that
  * this session properly releases anything hold in the shared memory.
@@ -417,18 +416,19 @@ RegisterConnectionCleanup(void)
 	{
 		before_shmem_exit(CitusCleanupConnectionsAtExit, 0);
 
-		on_proc_exit(CitusAtExit, 0);
+		before_shmem_exit(CitusAtExit, 0);
 
 		registeredCleanup = true;
 	}
 }
 
+
 static void
 CitusAtExit(int code, Datum arg)
 {
-	elog(WARNING, "CitusAtExit");
 	DecrementActiveBackens();
 }
+
 
 /*
  * CitusCleanupConnectionsAtExit is called before_shmem_exit() of the

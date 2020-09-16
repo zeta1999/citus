@@ -143,6 +143,8 @@ assign_distributed_transaction_id(PG_FUNCTION_ARGS)
 		MyBackendData->transactionId.initiatorNodeIdentifier;
 	MyBackendData->citusBackend.transactionOriginator = false;
 
+	MyBackendData->counted = false;
+
 	SpinLockRelease(&MyBackendData->mutex);
 
 	PG_RETURN_VOID();
@@ -633,25 +635,49 @@ InitializeBackendData(void)
 	UnlockBackendSharedMemory();
 }
 
+
 void
 IncrementActiveBackens()
 {
-	static bool incremented = false;
+	bool counted = false;
+	SpinLockAcquire(&MyBackendData->mutex);
 
-	if (!incremented)
+	counted = MyBackendData->counted;
+
+	SpinLockRelease(&MyBackendData->mutex);
+
+
+	if (!counted)
 	{
-		int val = pg_atomic_add_fetch_u32(&backendManagementShmemData->totalBackendCount, 1);
-		elog(DEBUG1, "inc val: %d", val);
-		incremented =true;
+		pg_atomic_add_fetch_u32(&backendManagementShmemData->totalBackendCount, 1);
+
+
+		SpinLockAcquire(&MyBackendData->mutex);
+
+		MyBackendData->counted = true;
+
+		SpinLockRelease(&MyBackendData->mutex);
 	}
 }
+
 
 void
 DecrementActiveBackens()
 {
-	int val = pg_atomic_sub_fetch_u32(&backendManagementShmemData->totalBackendCount, 1);
-	elog(DEBUG1, "dec val: %d", val);
+	bool counted = false;
 
+	SpinLockAcquire(&MyBackendData->mutex);
+	counted = MyBackendData->counted;
+	SpinLockRelease(&MyBackendData->mutex);
+
+	if (counted)
+	{
+		pg_atomic_sub_fetch_u32(&backendManagementShmemData->totalBackendCount, 1);
+
+		SpinLockAcquire(&MyBackendData->mutex);
+		MyBackendData->counted = false;
+		SpinLockRelease(&MyBackendData->mutex);
+	}
 }
 
 
@@ -659,8 +685,8 @@ uint32
 GetActiveBackends(void)
 {
 	return pg_atomic_read_u32(&backendManagementShmemData->totalBackendCount);
+}
 
-	}
 
 /*
  * UnSetDistributedTransactionId simply acquires the mutex and resets the backend's
@@ -803,6 +829,8 @@ MarkCitusInitiatedCoordinatorBackend(void)
 	MyBackendData->citusBackend.transactionOriginator = true;
 
 	SpinLockRelease(&MyBackendData->mutex);
+
+	IncrementActiveBackens();
 }
 
 

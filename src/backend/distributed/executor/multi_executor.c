@@ -86,6 +86,8 @@ static bool CitusCustomScanStateWalker(PlanState *planState,
  * CitusExecutorStart is the ExecutorStart_hook that gets called when
  * Postgres prepares for execution or EXPLAIN.
  */
+#include "distributed/backend_data.h"
+
 void
 CitusExecutorStart(QueryDesc *queryDesc, int eflags)
 {

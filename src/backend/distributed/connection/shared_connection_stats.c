@@ -46,6 +46,7 @@
 
 #define REMOTE_CONNECTION_STATS_COLUMNS 4
 
+#include "distributed/backend_data.h"
 
 /*
  * The data structure used to store data in shared memory. This data structure is only
@@ -198,7 +199,7 @@ GetMaxSharedPoolSize(void)
 {
 	if (MaxSharedPoolSize == ADJUST_POOLSIZE_AUTOMATICALLY)
 	{
-		return MaxConnections  * 0.66;
+		return MaxConnections;
 	}
 
 	return MaxSharedPoolSize;
@@ -235,7 +236,6 @@ WaitLoopForSharedConnection(const char *hostname, int port)
  * to establish a new connection to the given node. Else, the caller
  * is not allowed to establish a new connection.
  */
-#include "distributed/backend_data.h"
 bool
 TryToIncrementSharedConnectionCounter(const char *hostname, int port)
 {
@@ -274,12 +274,6 @@ TryToIncrementSharedConnectionCounter(const char *hostname, int port)
 
 	LockConnectionSharedMemory(LW_EXCLUSIVE);
 
-	if (MaxConnections - GetActiveBackends() < MaxConnections * 0.25)
-	{
-		UnLockConnectionSharedMemory();
-
-		return false;
-	}
 
 	/*
 	 * As the hash map is  allocated in shared memory, it doesn't rely on palloc for
@@ -302,6 +296,8 @@ TryToIncrementSharedConnectionCounter(const char *hostname, int port)
 		return true;
 	}
 
+	int acb = GetActiveBackends();
+
 	if (!entryFound)
 	{
 		/* we successfully allocated the entry for the first time, so initialize it */
@@ -309,7 +305,8 @@ TryToIncrementSharedConnectionCounter(const char *hostname, int port)
 
 		counterIncremented = true;
 	}
-	else if (connectionEntry->connectionCount + 1 > GetMaxSharedPoolSize())
+	else if (MaxConnections - (acb + connectionEntry->connectionCount + 1) <
+			 MaxConnections * 0.1)
 	{
 		/* there is no space left for this connection */
 		counterIncremented = false;
