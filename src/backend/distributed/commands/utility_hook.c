@@ -65,6 +65,7 @@
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
 bool EnableDDLPropagation = true; /* ddl propagation is enabled */
@@ -675,6 +676,15 @@ ExecuteDistributedDDLJob(DDLJob *ddlJob)
 	}
 	else
 	{
+		localExecutionSupported = false;
+
+		/*
+		 * End the transaction to allow CREATE INDEX CONCURRENTLY on local
+		 * shards to proceed.
+		 */
+		CommitTransactionCommand();
+		StartTransactionCommand();
+
 		/* save old commit protocol to restore at xact end */
 		Assert(SavedMultiShardCommitProtocol == COMMIT_PROTOCOL_BARE);
 		SavedMultiShardCommitProtocol = MultiShardCommitProtocol;
