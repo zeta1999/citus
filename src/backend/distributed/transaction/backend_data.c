@@ -56,6 +56,8 @@ typedef struct BackendManagementShmemData
 	NamedLWLockTranche namedLockTranche;
 	LWLock lock;
 
+	pg_atomic_uint32 totalBackendCount;
+
 	/*
 	 * We prefer to use an atomic integer over sequences for two
 	 * reasons (i) orders of magnitude performance difference
@@ -495,6 +497,7 @@ BackendManagementShmemInit(void)
 
 		/* start the distributed transaction ids from 1 */
 		pg_atomic_init_u64(&backendManagementShmemData->nextTransactionNumber, 1);
+		pg_atomic_init_u32(&backendManagementShmemData->totalBackendCount, 0);
 
 		/*
 		 * We need to init per backend's spinlock before any backend
@@ -630,6 +633,34 @@ InitializeBackendData(void)
 	UnlockBackendSharedMemory();
 }
 
+void
+IncrementActiveBackens()
+{
+	static bool incremented = false;
+
+	if (!incremented)
+	{
+		int val = pg_atomic_add_fetch_u32(&backendManagementShmemData->totalBackendCount, 1);
+		elog(DEBUG1, "inc val: %d", val);
+		incremented =true;
+	}
+}
+
+void
+DecrementActiveBackens()
+{
+	int val = pg_atomic_sub_fetch_u32(&backendManagementShmemData->totalBackendCount, 1);
+	elog(DEBUG1, "dec val: %d", val);
+
+}
+
+
+uint32
+GetActiveBackends(void)
+{
+	return pg_atomic_read_u32(&backendManagementShmemData->totalBackendCount);
+
+	}
 
 /*
  * UnSetDistributedTransactionId simply acquires the mutex and resets the backend's

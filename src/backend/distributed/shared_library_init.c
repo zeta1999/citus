@@ -97,6 +97,7 @@ static void DoInitialCleanup(void);
 static void ResizeStackToMaximumDepth(void);
 static void multi_log_hook(ErrorData *edata);
 static void RegisterConnectionCleanup(void);
+static void CitusAtExit(int code, Datum arg);
 static void CitusCleanupConnectionsAtExit(int code, Datum arg);
 static void CreateRequiredDirectories(void);
 static void RegisterCitusConfigVariables(void);
@@ -399,6 +400,7 @@ StartupCitusBackend(void)
 	InitializeMaintenanceDaemonBackend();
 	InitializeBackendData();
 	RegisterConnectionCleanup();
+	IncrementActiveBackens();
 }
 
 
@@ -415,10 +417,18 @@ RegisterConnectionCleanup(void)
 	{
 		before_shmem_exit(CitusCleanupConnectionsAtExit, 0);
 
+		on_proc_exit(CitusAtExit, 0);
+
 		registeredCleanup = true;
 	}
 }
 
+static void
+CitusAtExit(int code, Datum arg)
+{
+	elog(WARNING, "CitusAtExit");
+	DecrementActiveBackens();
+}
 
 /*
  * CitusCleanupConnectionsAtExit is called before_shmem_exit() of the

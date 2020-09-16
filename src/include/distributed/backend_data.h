@@ -69,4 +69,13 @@ extern bool MyBackendGotCancelledDueToDeadlock(bool clearState);
 extern List * ActiveDistributedTransactionNumbers(void);
 LocalTransactionId GetMyProcLocalTransactionId(void);
 
+
+void
+IncrementActiveBackens(void);
+void
+DecrementActiveBackens(void);
+
+uint32
+GetActiveBackends(void);
+
 #endif /* BACKEND_DATA_H */

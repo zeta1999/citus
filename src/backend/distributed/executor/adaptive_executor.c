@@ -621,6 +621,7 @@ static bool StartPlacementExecutionOnSession(TaskPlacementExecution *placementEx
 static bool SendNextQuery(TaskPlacementExecution *placementExecution,
 						  WorkerSession *session);
 static void ConnectionStateMachine(WorkerSession *session);
+static bool ErrorMsgIsMaxConnections(MultiConnection *connection);
 static bool CouldAssignTasksToLocalExecution(WorkerSession *workerSession);
 static void RemoveConnectionFromExecution(DistributedExecution *execution,
 										  MultiConnection *connection);
@@ -2257,6 +2258,15 @@ RunDistributedExecution(DistributedExecution *execution)
 				ManageWorkerPool(workerPool);
 			}
 
+			if (workerPool->sessionList == NIL)
+			{
+				RemoveWorkerPoolFromExecution(workerPool);
+
+				AdjustDistributedExecutionWithLocalExecution(execution);
+
+				SetLocalExecutionStatus(LOCAL_EXECUTION_REQUIRED);
+			}
+
 			if (execution->rebuildWaitEventSet)
 			{
 				if (events != NULL)
@@ -2981,12 +2991,13 @@ ConnectionStateMachine(WorkerSession *session)
 				}
 				else
 				{
-					int level =
-						SessionHasAssignedTask(session) || session->commandsSent > 0 ?
-						WARNING : DEBUG1;
+					bool ignoreError =
+						(session->commandsSent == 0 && !SessionHasAssignedTask(session) &&
+						 ErrorMsgIsMaxConnections(connection));
+					int level = ignoreError ? DEBUG1 : WARNING;
 
 					/* can continue with the remaining nodes */
-					ReportConnectionError(connection, level);
+					ReportConnectionError(connection, WARNING);
 				}
 
 				RemoveConnectionFromExecution(execution, connection);
@@ -3002,6 +3013,52 @@ ConnectionStateMachine(WorkerSession *session)
 	} while (connection->connectionState != currentState);
 }
 
+/*
+ * ErrorMsgIsMaxConnections returns true if the error message
+ *
+ * NB: We are aware of the fact that relying on the error
+ * message text is fragile and not wise. The proper way
+ * is to check the error code. However, if an establishment
+ * fails while PQconnectPoll() is in progress, there are
+ * no APIs to get the error code. The more fragile approach
+ * could have been to import "libpq-int.h" and access
+ * directly "pgConn->last_sqlstate". Instead, we prefer to
+ * check the error message, which has been there for a while
+ * and not likely to change often to bother us.
+ * Plus, this function is not very crucial in terms of
+ * correctness or such. It is mostly used for a little
+ * nicer user experience.
+ */
+static bool
+ErrorMsgIsMaxConnections(MultiConnection *connection)
+{
+	PGconn *pgConn = connection->pgConn;
+	char *messageDetail = NULL;
+
+	if (pgConn != NULL)
+	{
+		messageDetail = pchomp(PQerrorMessage(pgConn));
+	}
+
+	bool messageContains = false;
+
+	if (messageDetail != NULL)
+	{
+
+		/*
+		 * We use the error message that is in ProcessStartupPacket()
+		 * on Postgres, where the new connections are rejected
+		 * with ERRCODE_TOO_MANY_CONNECTIONS.
+		 */
+		const char *pgError = "sorry, too many clients already";
+		char *matched = strstr(messageDetail, pgError);
+
+		messageContains = matched ? true : false;
+	}
+
+	return messageContains;
+
+}
 
 static bool
 CouldAssignTasksToLocalExecution(WorkerSession *workerSession)
