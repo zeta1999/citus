@@ -442,23 +442,6 @@ PostprocessIndexStmt(Node *node, const char *queryString)
 	CommitTransactionCommand();
 	StartTransactionCommand();
 
-	/* now, update index's validity in a way that can roll back */
-	Relation pg_index = table_open(IndexRelationId, RowExclusiveLock);
-
-	HeapTuple indexTuple = SearchSysCacheCopy1(INDEXRELID, ObjectIdGetDatum(
-												   indexRelationId));
-	Assert(HeapTupleIsValid(indexTuple)); /* better be present, we have lock! */
-
-	/* mark as valid, save, and update pg_index indexes */
-	Form_pg_index indexForm = (Form_pg_index) GETSTRUCT(indexTuple);
-	indexForm->indisvalid = true;
-
-	CatalogTupleUpdate(pg_index, &indexTuple->t_self, indexTuple);
-
-	/* clean up; index now marked valid, but ROLLBACK will mark invalid */
-	heap_freetuple(indexTuple);
-	table_close(pg_index, RowExclusiveLock);
-
 	return NIL;
 }
 
@@ -920,4 +903,43 @@ DropIndexTaskList(Oid relationId, Oid indexId, DropStmt *dropStmt)
 	}
 
 	return taskList;
+}
+
+
+/*
+ * FinishCreateIndexConcurrently marks new indexes valid if they were created using
+ * the CONCURRENTLY flag, because we marked it as invalid in PostProcessIndexStmt.
+ */
+void
+FinishCreateIndexConcurrently(IndexStmt *indexStmt)
+{
+	Assert(indexStmt->concurrent);
+
+	/* this logic only applies to the coordinator */
+	if (!IsCoordinator())
+	{
+		return;
+	}
+
+	/*
+	 * We make sure schema name is not null in the PreprocessIndexStmt
+	 */
+	Oid schemaId = get_namespace_oid(indexStmt->relation->schemaname, true);
+	Oid relationId = get_relname_relid(indexStmt->relation->relname, schemaId);
+	if (!IsCitusTable(relationId))
+	{
+		return;
+	}
+
+	/* get the affected relation and index */
+	Relation relation = table_openrv(indexStmt->relation, ShareUpdateExclusiveLock);
+	Oid indexRelationId = get_relname_relid(indexStmt->idxname,
+											schemaId);
+	Relation indexRelation = index_open(indexRelationId, RowExclusiveLock);
+
+	/* mark index as valid, in-place (cannot be rolled back) */
+	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_VALID);
+
+	table_close(relation, NoLock);
+	index_close(indexRelation, NoLock);
 }

@@ -589,6 +589,16 @@ multi_ProcessUtility(PlannedStmt *pstmt,
 		PostprocessVacuumStmt(vacuumStmt, queryString);
 	}
 
+	if (IsA(parsetree, IndexStmt))
+	{
+		IndexStmt *indexStmt = (IndexStmt *) parsetree;
+
+		if (indexStmt->concurrent)
+		{
+			FinishCreateIndexConcurrently(indexStmt);
+		}
+	}
+
 	if (!IsDropCitusExtensionStmt(parsetree) && !IsA(parsetree, DropdbStmt))
 	{
 		/*
@@ -675,6 +685,15 @@ ExecuteDistributedDDLJob(DDLJob *ddlJob)
 	}
 	else
 	{
+		localExecutionSupported = false;
+
+		/*
+		 * Start a new transaction to make sure local execution does not wait
+		 * for us.
+		 */
+		CommitTransactionCommand();
+		StartTransactionCommand();
+
 		/* save old commit protocol to restore at xact end */
 		Assert(SavedMultiShardCommitProtocol == COMMIT_PROTOCOL_BARE);
 		SavedMultiShardCommitProtocol = MultiShardCommitProtocol;
