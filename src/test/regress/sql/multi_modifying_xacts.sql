@@ -2,6 +2,9 @@
 SET citus.next_shard_id TO 1200000;
 SET citus.next_placement_id TO 1200000;
 
+CREATE SCHEMA modifying_xacts;
+SET search_path TO modifying_xacts, public;
+
 -- ===================================================================
 -- test end-to-end modification functionality
 -- ===================================================================
@@ -1179,3 +1182,5 @@ RESET citus.function_opens_transaction_block;
 
 DROP FUNCTION insert_abort();
 DROP TABLE items, users, itemgroups, usergroups, researchers, labs;
+
+DROP SCHEMA modifying_xacts CASCADE;

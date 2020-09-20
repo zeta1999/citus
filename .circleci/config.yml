@@ -114,6 +114,20 @@ jobs:
       - codecov/upload:
           flags: 'test_11,multi'
 
+  test-11_check-multi-1:
+    docker:
+      - image: 'citus/exttester:11.9'
+    working_directory: /home/circleci/project
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi-1'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_11,multi'
 
 
   test-11_check-vanilla:
@@ -252,6 +266,22 @@ jobs:
           no_output_timeout: 2m
       - codecov/upload:
           flags: 'test_12,multi'
+
+  test-12_check-multi-1:
+    docker:
+      - image: 'citus/exttester:12.4'
+    working_directory: /home/circleci/project
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi-1'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_12,multi' 
+
   test-12_check-vanilla:
     docker:
       - image: 'citus/exttester:12.4'
@@ -387,6 +417,21 @@ jobs:
           no_output_timeout: 2m
       - codecov/upload:
           flags: 'test_13,multi'
+
+  test-13_check-multi-1:
+    docker:
+      - image: 'citus/exttester:13beta3'
+    working_directory: /home/circleci/project
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install and Test (check-multi)'
+          command: 'chown -R circleci:circleci /home/circleci && install-and-test-ext check-multi-1'
+          no_output_timeout: 2m
+      - codecov/upload:
+          flags: 'test_13,multi'        
 
   test-13_check-mx:
     docker:
@@ -546,6 +591,8 @@ workflows:
 
       - test-11_check-multi:
           requires: [build-11]
+      - test-11_check-multi-1:
+          requires: [build-11]
       - test-11_check-vanilla:
           requires: [build-11]
       - test-11_check-isolation:
@@ -560,6 +607,8 @@ workflows:
           requires: [build-11]
 
       - test-12_check-multi:
+          requires: [build-12]
+      - test-12_check-multi-1:
           requires: [build-12]
       - test-12_check-vanilla:
           requires: [build-12]
@@ -576,6 +625,8 @@ workflows:
 
       - test-13_check-multi:
           requires: [build-13]
+      - test-13_check-multi-1:
+          requires: [build-13]    
       - test-13_check-vanilla:
           requires: [build-13]
       - test-13_check-isolation:
