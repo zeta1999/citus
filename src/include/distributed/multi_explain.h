@@ -15,8 +15,8 @@
 
 typedef enum
 {
-	TIME = 0,
-	TASK_ID = 1
+	EXPLAIN_ANALYZE_SORT_BY_TIME = 0,
+	EXPLAIN_ANALYZE_SORT_BY_TASK_ID = 1
 } ExplainAnalyzeSortMethods;
 
 /* Config variables managed via guc.c to explain distributed query plans */

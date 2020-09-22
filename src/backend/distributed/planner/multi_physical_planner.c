@@ -5570,7 +5570,9 @@ SetPlacementNodeMetadata(ShardPlacement *placement, WorkerNode *workerNode)
 }
 
 
-/* Helper function to compare two tasks by their taskId. */
+/*
+ * CompareTasksByTaskId is a helper function to compare two tasks by their taskId.
+ */
 int
 CompareTasksByTaskId(const void *leftElement, const void *rightElement)
 {
@@ -5585,20 +5587,22 @@ CompareTasksByTaskId(const void *leftElement, const void *rightElement)
 }
 
 
-/* Helper function to compare two tasks by their execution duration. */
+/*
+ * CompareTasksByExecutionDuration is a helper function to compare two tasks by their execution duration.
+ */
 int
 CompareTasksByExecutionDuration(const void *leftElement, const void *rightElement)
 {
 	const Task *leftTask = *((const Task **) leftElement);
 	const Task *rightTask = *((const Task **) rightElement);
 
-	double leftTaskExecutionDuration = leftTask->fetchedExecutionDuration;
-	double rightTaskExecutionDuration = rightTask->fetchedExecutionDuration;
+	double leftTaskExecutionDuration = leftTask->fetchedExplainAnalyzeExecutionDuration;
+	double rightTaskExecutionDuration = rightTask->fetchedExplainAnalyzeExecutionDuration;
 
 	double diff = leftTaskExecutionDuration - rightTaskExecutionDuration;
 	if (diff != 0)
 	{
-		/* Sorting in descending order. */
+		/* sorting in descending order. */
 		return (diff > 0 ? -1 : 1);
 	}
 	return 0;

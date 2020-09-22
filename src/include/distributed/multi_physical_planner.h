@@ -326,7 +326,7 @@ typedef struct Task
 	 * Execution Duration fetched from worker. This is saved to be used later by
 	 * ExplainTaskList().
 	 */
-	double fetchedExecutionDuration;
+	double fetchedExplainAnalyzeExecutionDuration;
 } Task;
 
 

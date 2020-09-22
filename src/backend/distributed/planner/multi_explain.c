@@ -68,7 +68,7 @@
 /* Config variables that enable printing distributed query plans */
 bool ExplainDistributedQueries = true;
 bool ExplainAllTasks = false;
-int ExplainAnalyzeSortMethod = TIME;
+int ExplainAnalyzeSortMethod = EXPLAIN_ANALYZE_SORT_BY_TIME;
 
 /*
  * If enabled, EXPLAIN ANALYZE output & other statistics of last worker task
@@ -541,7 +541,7 @@ ExplainTaskList(CitusScanState *scanState, List *taskList, ExplainState *es,
 	ListCell *remoteExplainCell = NULL;
 	List *remoteExplainList = NIL;
 
-	if (es->analyze && ExplainAnalyzeSortMethod == TIME)
+	if (es->analyze && ExplainAnalyzeSortMethod == EXPLAIN_ANALYZE_SORT_BY_TIME)
 	{
 		/* Sort by execution duration only in case of ANALYZE */
 		taskList = SortList(taskList, CompareTasksByExecutionDuration);
@@ -1291,7 +1291,7 @@ ExplainAnalyzeDestPutTuple(TupleDestination *self, Task *task,
 		}
 
 		char *fetchedExplainAnalyzePlan = TextDatumGetCString(explainAnalyze);
-		double fetchedExecutionDuration = DatumGetFloat8(executionDuration);
+		double fetchedExplainAnalyzeExecutionDuration = DatumGetFloat8(executionDuration);
 
 		/*
 		 * Allocate fetchedExplainAnalyzePlan in the same context as the Task, since we are
@@ -1315,8 +1315,8 @@ ExplainAnalyzeDestPutTuple(TupleDestination *self, Task *task,
 			MemoryContextStrdup(taskContext, fetchedExplainAnalyzePlan);
 		tupleDestination->originalTask->fetchedExplainAnalyzePlacementIndex =
 			placementIndex;
-		tupleDestination->originalTask->fetchedExecutionDuration =
-			fetchedExecutionDuration;
+		tupleDestination->originalTask->fetchedExplainAnalyzeExecutionDuration =
+			fetchedExplainAnalyzeExecutionDuration;
 	}
 	else
 	{
