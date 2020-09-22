@@ -16,6 +16,7 @@
 /* Config variables managed via guc.c to explain distributed query plans */
 extern bool ExplainDistributedQueries;
 extern bool ExplainAllTasks;
+extern char *ExplainAnalyzeSortMethod;
 
 extern void FreeSavedExplainPlan(void);
 extern void CitusExplainOneQuery(Query *query, int cursorOptions, IntoClause *into,

@@ -1487,6 +1487,21 @@ RegisterCitusConfigVariables(void)
 		GUC_NO_SHOW_ALL,
 		NULL, NULL, NULL);
 
+	DefineCustomStringVariable(
+		"citus.explain_analyze_sort_method",
+		gettext_noop("Sets the sorting method for EXPLAIN ANALYZE queries."),
+		gettext_noop("This parameter is not intended for users. It is developed "
+					 "to get consistent regression test outputs. When it is set "
+					 "to 'time', EXPLAIN ANALYZE output is sorted by execution "
+					 "duration. When it is set to 'taskId', it is sorted by task "
+					 "id. By default, it is set to 'time'; but in regression "
+					 "tests, it is set to 'taskId' for consistency purposes."),
+		&ExplainAnalyzeSortMethod,
+		"time",
+		PGC_USERSET,
+		GUC_NO_SHOW_ALL,
+		NULL, NULL, NULL);
+
 	/* warn about config items in the citus namespace that are not registered above */
 	EmitWarningsOnPlaceholders("citus");
 }

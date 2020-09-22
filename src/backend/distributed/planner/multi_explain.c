@@ -68,6 +68,7 @@
 /* Config variables that enable printing distributed query plans */
 bool ExplainDistributedQueries = true;
 bool ExplainAllTasks = false;
+char *ExplainAnalyzeSortMethod = "";
 
 /*
  * If enabled, EXPLAIN ANALYZE output & other statistics of last worker task
@@ -540,7 +541,7 @@ ExplainTaskList(CitusScanState *scanState, List *taskList, ExplainState *es,
 	ListCell *remoteExplainCell = NULL;
 	List *remoteExplainList = NIL;
 
-	if (es->analyze)
+	if (es->analyze && strcmp(ExplainAnalyzeSortMethod, "time") == 0)
 	{	
 		/* Sort by execution duration only in case of ANALYZE */
 		taskList = SortList(taskList, CompareTasksByExecutionDuration);
