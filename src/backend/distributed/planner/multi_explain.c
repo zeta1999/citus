@@ -530,7 +530,7 @@ ExplainMapMergeJob(MapMergeJob *mapMergeJob, ExplainState *es)
 
 
 /*
- * ExplainTaskList shows the remote EXPLAIN and execution time for the first task 
+ * ExplainTaskList shows the remote EXPLAIN and execution time for the first task
  * in taskList, or all tasks if citus.explain_all_tasks is on.
  */
 static void
@@ -542,7 +542,7 @@ ExplainTaskList(CitusScanState *scanState, List *taskList, ExplainState *es,
 	List *remoteExplainList = NIL;
 
 	if (es->analyze && strcmp(ExplainAnalyzeSortMethod, "time") == 0)
-	{	
+	{
 		/* Sort by execution duration only in case of ANALYZE */
 		taskList = SortList(taskList, CompareTasksByExecutionDuration);
 	}
@@ -1315,7 +1315,8 @@ ExplainAnalyzeDestPutTuple(TupleDestination *self, Task *task,
 			MemoryContextStrdup(taskContext, fetchedExplainAnalyzePlan);
 		tupleDestination->originalTask->fetchedExplainAnalyzePlacementIndex =
 			placementIndex;
-		tupleDestination->originalTask->fetchedExecutionDuration = fetchedExecutionDuration;
+		tupleDestination->originalTask->fetchedExecutionDuration =
+			fetchedExecutionDuration;
 	}
 	else
 	{

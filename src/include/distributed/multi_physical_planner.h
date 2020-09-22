@@ -570,7 +570,8 @@ extern List * RoundRobinAssignTaskList(List *taskList);
 extern List * RoundRobinReorder(List *placementList);
 extern void SetPlacementNodeMetadata(ShardPlacement *placement, WorkerNode *workerNode);
 extern int CompareTasksByTaskId(const void *leftElement, const void *rightElement);
-extern int CompareTasksByExecutionDuration(const void *leftElement, const void *rightElement);
+extern int CompareTasksByExecutionDuration(const void *leftElement, const
+										   void *rightElement);
 
 /* function declaration for creating Task */
 extern List * QueryPushdownSqlTaskList(Query *query, uint64 jobId,

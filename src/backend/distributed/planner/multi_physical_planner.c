@@ -5584,6 +5584,7 @@ CompareTasksByTaskId(const void *leftElement, const void *rightElement)
 	return taskIdDiff;
 }
 
+
 /* Helper function to compare two tasks by their execution duration. */
 int
 CompareTasksByExecutionDuration(const void *leftElement, const void *rightElement)
@@ -5598,8 +5599,8 @@ CompareTasksByExecutionDuration(const void *leftElement, const void *rightElemen
 	if (diff != 0)
 	{
 		/* Sorting in descending order. */
-		return (diff > 0 ? -1: 1); 
-	} 
+		return (diff > 0 ? -1 : 1);
+	}
 	return 0;
 }
 
