@@ -691,8 +691,11 @@ ExecuteDistributedDDLJob(DDLJob *ddlJob)
 		 * Start a new transaction to make sure local execution does not wait
 		 * for us.
 		 */
-		CommitTransactionCommand();
-		StartTransactionCommand();
+		if (ddlJob->startNewTransaction)
+		{
+			CommitTransactionCommand();
+			StartTransactionCommand();
+		}
 
 		/* save old commit protocol to restore at xact end */
 		Assert(SavedMultiShardCommitProtocol == COMMIT_PROTOCOL_BARE);

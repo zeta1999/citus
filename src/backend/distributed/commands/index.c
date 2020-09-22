@@ -178,6 +178,7 @@ PreprocessIndexStmt(Node *node, const char *createIndexCommand)
 				DDLJob *ddlJob = palloc0(sizeof(DDLJob));
 				ddlJob->targetRelationId = relationId;
 				ddlJob->concurrentIndexCmd = createIndexStatement->concurrent;
+				ddlJob->startNewTransaction = createIndexStatement->concurrent;
 				ddlJob->commandString = createIndexCommand;
 				ddlJob->taskList = CreateIndexTaskList(relationId, createIndexStatement);
 

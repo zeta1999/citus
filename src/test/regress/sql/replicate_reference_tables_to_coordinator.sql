@@ -17,6 +17,7 @@ SELECT create_reference_table('squares');
 INSERT INTO squares SELECT i, i * i FROM generate_series(1, 10) i;
 
 CREATE INDEX CONCURRENTLY squares_a_idx ON squares (a);
+DROP INDEX CONCURRENTLY squares_a_idx;
 
 -- should be executed locally
 SELECT count(*) FROM squares;
