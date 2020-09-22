@@ -5584,6 +5584,25 @@ CompareTasksByTaskId(const void *leftElement, const void *rightElement)
 	return taskIdDiff;
 }
 
+/* Helper function to compare two tasks by their execution duration. */
+int
+CompareTasksByExecutionDuration(const void *leftElement, const void *rightElement)
+{
+	const Task *leftTask = *((const Task **) leftElement);
+	const Task *rightTask = *((const Task **) rightElement);
+
+	double leftTaskExecutionDuration = leftTask->fetchedExecutionDuration;
+	double rightTaskExecutionDuration = rightTask->fetchedExecutionDuration;
+
+	double diff = leftTaskExecutionDuration - rightTaskExecutionDuration;
+	if (diff != 0)
+	{
+		/* Sorting in descending order. */
+		return (diff > 0 ? -1: 1); 
+	} 
+	return 0;
+}
+
 
 /*
  * AssignDataFetchDependencies walks over tasks in the given sql or merge task

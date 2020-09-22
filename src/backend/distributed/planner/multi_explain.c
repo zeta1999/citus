@@ -529,8 +529,8 @@ ExplainMapMergeJob(MapMergeJob *mapMergeJob, ExplainState *es)
 
 
 /*
- * ExplainTaskList shows the remote EXPLAIN for the first task in taskList,
- * or all tasks if citus.explain_all_tasks is on.
+ * ExplainTaskList shows the remote EXPLAIN and execution time for the first task 
+ * in taskList, or all tasks if citus.explain_all_tasks is on.
  */
 static void
 ExplainTaskList(CitusScanState *scanState, List *taskList, ExplainState *es,
@@ -540,8 +540,16 @@ ExplainTaskList(CitusScanState *scanState, List *taskList, ExplainState *es,
 	ListCell *remoteExplainCell = NULL;
 	List *remoteExplainList = NIL;
 
-	/* make sure that the output is consistent */
-	taskList = SortList(taskList, CompareTasksByTaskId);
+	if (es->analyze)
+	{	
+		/* Sort by execution duration only in case of ANALYZE */
+		taskList = SortList(taskList, CompareTasksByExecutionDuration);
+	}
+	else
+	{
+		/* make sure that the output is consistent */
+		taskList = SortList(taskList, CompareTasksByTaskId);
+	}
 
 	foreach(taskCell, taskList)
 	{
@@ -1225,13 +1233,15 @@ CreateExplainAnlyzeDestination(Task *task, TupleDestination *taskDest)
 	tupleDestination->originalTaskDestination = taskDest;
 
 #if PG_VERSION_NUM >= PG_VERSION_12
-	TupleDesc lastSavedExplainAnalyzeTupDesc = CreateTemplateTupleDesc(1);
+	TupleDesc lastSavedExplainAnalyzeTupDesc = CreateTemplateTupleDesc(2);
 #else
-	TupleDesc lastSavedExplainAnalyzeTupDesc = CreateTemplateTupleDesc(1, false);
+	TupleDesc lastSavedExplainAnalyzeTupDesc = CreateTemplateTupleDesc(2, false);
 #endif
 
 	TupleDescInitEntry(lastSavedExplainAnalyzeTupDesc, 1, "explain analyze", TEXTOID, 0,
 					   0);
+	TupleDescInitEntry(lastSavedExplainAnalyzeTupDesc, 2, "duration", FLOAT8OID, 0, 0);
+
 	tupleDestination->lastSavedExplainAnalyzeTupDesc = lastSavedExplainAnalyzeTupDesc;
 
 	tupleDestination->pub.putTuple = ExplainAnalyzeDestPutTuple;
@@ -1271,7 +1281,16 @@ ExplainAnalyzeDestPutTuple(TupleDestination *self, Task *task,
 			return;
 		}
 
+		Datum executionDuration = heap_getattr(heapTuple, 2, tupDesc, &isNull);
+
+		if (isNull)
+		{
+			ereport(WARNING, (errmsg("received null execution time from worker")));
+			return;
+		}
+
 		char *fetchedExplainAnalyzePlan = TextDatumGetCString(explainAnalyze);
+		double fetchedExecutionDuration = DatumGetFloat8(executionDuration);
 
 		/*
 		 * Allocate fetchedExplainAnalyzePlan in the same context as the Task, since we are
@@ -1281,7 +1300,7 @@ ExplainAnalyzeDestPutTuple(TupleDestination *self, Task *task,
 		 * calls to CheckNodeCopyAndSerialization() which asserts copy functions of the task
 		 * work as expected, which will try to copy this value in a future execution.
 		 *
-		 * Why we don't we just allocate this field in executor context and reset it before
+		 * Why don't we just allocate this field in executor context and reset it before
 		 * the next execution? Because when an error is raised we can skip pretty much most
 		 * of the meaningful places that we can insert the reset.
 		 *
@@ -1295,6 +1314,7 @@ ExplainAnalyzeDestPutTuple(TupleDestination *self, Task *task,
 			MemoryContextStrdup(taskContext, fetchedExplainAnalyzePlan);
 		tupleDestination->originalTask->fetchedExplainAnalyzePlacementIndex =
 			placementIndex;
+		tupleDestination->originalTask->fetchedExecutionDuration = fetchedExecutionDuration;
 	}
 	else
 	{
@@ -1385,7 +1405,7 @@ ExplainAnalyzeTaskList(List *originalTaskList,
 		const char *queryString = TaskQueryString(explainAnalyzeTask);
 		char *wrappedQuery = WrapQueryForExplainAnalyze(queryString, tupleDesc);
 		char *fetchQuery =
-			"SELECT explain_analyze_output FROM worker_last_saved_explain_analyze()";
+			"SELECT explain_analyze_output, execution_duration FROM worker_last_saved_explain_analyze()";
 		SetTaskQueryStringList(explainAnalyzeTask, list_make2(wrappedQuery, fetchQuery));
 
 		TupleDestination *originalTaskDest = originalTask->tupleDest ?
