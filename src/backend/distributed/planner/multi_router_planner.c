@@ -155,7 +155,6 @@ static Job * RouterJob(Query *originalQuery,
 					   PlannerRestrictionContext *plannerRestrictionContext,
 					   DeferredErrorMessage **planningError);
 static bool RelationPrunesToMultipleShards(List *relationShardList);
-static void NormalizeMultiRowInsertTargetList(Query *query);
 static List * BuildRoutesForInsert(Query *query, DeferredErrorMessage **planningError);
 static List * GroupInsertValuesByShardId(List *insertValuesList);
 static List * ExtractInsertValuesList(Query *query, Var *partitionColumn);
@@ -1563,13 +1562,6 @@ static Job *
 RouterInsertJob(Query *originalQuery)
 {
 	Assert(originalQuery->commandType == CMD_INSERT);
-
-	bool isMultiRowInsert = IsMultiRowInsert(originalQuery);
-	if (isMultiRowInsert)
-	{
-		/* add default expressions to RTE_VALUES in multi-row INSERTs */
-		NormalizeMultiRowInsertTargetList(originalQuery);
-	}
 
 	Job *job = CreateJob(originalQuery);
 	job->requiresCoordinatorEvaluation = RequiresCoordinatorEvaluation(originalQuery);
@@ -3031,94 +3023,6 @@ ExtractDistributedInsertValuesRTE(Query *query)
 		}
 	}
 	return NULL;
-}
-
-
-/*
- * NormalizeMultiRowInsertTargetList ensures all elements of multi-row INSERT target
- * lists are Vars. In multi-row INSERTs, most target list entries contain a Var
- * expression pointing to a position within the values_lists field of a VALUES
- * RTE, but non-NULL default columns are handled differently. Instead of adding
- * the default expression to each row, a single expression encoding the DEFAULT
- * appears in the target list. For consistency, we move these expressions into
- * values lists and replace them with an appropriately constructed Var.
- */
-static void
-NormalizeMultiRowInsertTargetList(Query *query)
-{
-	ListCell *valuesListCell = NULL;
-	ListCell *targetEntryCell = NULL;
-	int targetEntryNo = 0;
-
-	RangeTblEntry *valuesRTE = ExtractDistributedInsertValuesRTE(query);
-	if (valuesRTE == NULL)
-	{
-		return;
-	}
-
-	foreach(valuesListCell, valuesRTE->values_lists)
-	{
-		List *valuesList = (List *) lfirst(valuesListCell);
-		Expr **valuesArray = (Expr **) PointerArrayFromList(valuesList);
-		List *expandedValuesList = NIL;
-
-		foreach(targetEntryCell, query->targetList)
-		{
-			TargetEntry *targetEntry = (TargetEntry *) lfirst(targetEntryCell);
-			Expr *targetExpr = targetEntry->expr;
-
-			if (IsA(targetExpr, Var))
-			{
-				/* expression from the VALUES section */
-				Var *targetListVar = (Var *) targetExpr;
-				targetExpr = valuesArray[targetListVar->varattno - 1];
-			}
-			else
-			{
-				/* copy the column's default expression */
-				targetExpr = copyObject(targetExpr);
-			}
-
-			expandedValuesList = lappend(expandedValuesList, targetExpr);
-		}
-		SetListCellPtr(valuesListCell, (void *) expandedValuesList);
-	}
-
-	/* reset coltypes, coltypmods, colcollations and rebuild them below */
-	valuesRTE->coltypes = NIL;
-	valuesRTE->coltypmods = NIL;
-	valuesRTE->colcollations = NIL;
-
-	foreach(targetEntryCell, query->targetList)
-	{
-		TargetEntry *targetEntry = lfirst(targetEntryCell);
-		Node *targetExprNode = (Node *) targetEntry->expr;
-
-		/* RTE_VALUES comes 2nd, after destination table */
-		Index valuesVarno = 2;
-
-		targetEntryNo++;
-
-		Oid targetType = exprType(targetExprNode);
-		int32 targetTypmod = exprTypmod(targetExprNode);
-		Oid targetColl = exprCollation(targetExprNode);
-
-		valuesRTE->coltypes = lappend_oid(valuesRTE->coltypes, targetType);
-		valuesRTE->coltypmods = lappend_int(valuesRTE->coltypmods, targetTypmod);
-		valuesRTE->colcollations = lappend_oid(valuesRTE->colcollations, targetColl);
-
-		if (IsA(targetExprNode, Var))
-		{
-			Var *targetVar = (Var *) targetExprNode;
-			targetVar->varattno = targetEntryNo;
-			continue;
-		}
-
-		/* replace the original expression with a Var referencing values_lists */
-		Var *syntheticVar = makeVar(valuesVarno, targetEntryNo, targetType, targetTypmod,
-									targetColl, 0);
-		targetEntry->expr = (Expr *) syntheticVar;
-	}
 }
 
 
