@@ -78,7 +78,6 @@ my $valgrindPath = "valgrind";
 my $valgrindLogFile = "valgrind_test_log.txt";
 my $pgCtlTimeout = undef;
 my $connectionTimeout = 5000;
-my $explainAnalyzeSortMethod = "taskId";
 my $useMitmproxy = 0;
 my $mitmFifoPath = catfile($TMP_CHECKDIR, "mitmproxy.fifo");
 my $conninfo = "";
@@ -417,7 +416,7 @@ push(@pgOptions, '-c', "citus.task_tracker_delay=10ms");
 push(@pgOptions, '-c', "citus.remote_task_check_interval=1ms");
 push(@pgOptions, '-c', "citus.shard_replication_factor=2");
 push(@pgOptions, '-c', "citus.node_connection_timeout=${connectionTimeout}");
-push(@pgOptions, '-c', "citus.explain_analyze_sort_method=${explainAnalyzeSortMethod}");
+push(@pgOptions, '-c', "citus.explain_analyze_sort_method=1");
 
 # we disable slow start by default to encourage parallelism within tests
 push(@pgOptions, '-c', "citus.executor_slow_start_interval=0ms");

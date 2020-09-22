@@ -191,6 +191,12 @@ static const struct config_enum_entry multi_shard_modify_connection_options[] = 
 	{ NULL, 0, false }
 };
 
+static const struct config_enum_entry explain_analyze_sort_method_options[] = {
+	{ "time", TIME, false },
+	{ "taskId", TASK_ID, false },
+	{ NULL, 0, false }
+};
+
 /* *INDENT-ON* */
 
 
@@ -1487,7 +1493,7 @@ RegisterCitusConfigVariables(void)
 		GUC_NO_SHOW_ALL,
 		NULL, NULL, NULL);
 
-	DefineCustomStringVariable(
+	DefineCustomEnumVariable(
 		"citus.explain_analyze_sort_method",
 		gettext_noop("Sets the sorting method for EXPLAIN ANALYZE queries."),
 		gettext_noop("This parameter is not intended for users. It is developed "
@@ -1497,7 +1503,7 @@ RegisterCitusConfigVariables(void)
 					 "id. By default, it is set to 'time'; but in regression "
 					 "tests, it is set to 'taskId' for consistency purposes."),
 		&ExplainAnalyzeSortMethod,
-		"time",
+		TIME, explain_analyze_sort_method_options,
 		PGC_USERSET,
 		GUC_NO_SHOW_ALL,
 		NULL, NULL, NULL);
